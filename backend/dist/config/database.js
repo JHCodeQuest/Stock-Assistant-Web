@@ -3,45 +3,62 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.testConnection = void 0;
+exports.initDatabase = void 0;
 const pg_1 = require("pg");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
 const pool = new pg_1.Pool({
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    database: process.env.DB_NAME || 'stock_inventory',
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || '',
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL?.includes('render.com') ? { rejectUnauthorized: false } : false,
 });
-const testConnection = async () => {
+pool.on('error', (err) => {
+    console.error('Unexpected database error:', err);
+});
+const initDatabase = async () => {
+    const client = await pool.connect();
     try {
-        const client = await pool.connect();
-        console.log('Database connected successfully');
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        role VARCHAR(50) DEFAULT 'admin',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS inventory (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        sku VARCHAR(100) NOT NULL,
+        quantity INTEGER DEFAULT 0,
+        min_stock_level INTEGER DEFAULT 10,
+        category VARCHAR(100),
+        location VARCHAR(50),
+        image_url VARCHAR(500),
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS inventory_history (
+        id SERIAL PRIMARY KEY,
+        product_id INTEGER REFERENCES inventory(id) ON DELETE CASCADE,
+        adjustment_type VARCHAR(20) NOT NULL,
+        quantity INTEGER NOT NULL,
+        previous_quantity INTEGER,
+        reason TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+        console.log('Database tables initialized');
+    }
+    finally {
         client.release();
     }
-    catch (error) {
-        console.error('Database connection error:', error);
-        console.log('Trying to create database if it does not exist...');
-        const adminPool = new pg_1.Pool({
-            host: process.env.DB_HOST || 'localhost',
-            port: parseInt(process.env.DB_PORT || '5432'),
-            database: 'postgres',
-            user: process.env.DB_USER || 'postgres',
-            password: process.env.DB_PASSWORD || '',
-        });
-        try {
-            const adminClient = await adminPool.connect();
-            await adminClient.query(`CREATE DATABASE ${process.env.DB_NAME || 'stock_inventory'}`);
-            adminClient.release();
-            console.log('Database created successfully');
-        }
-        catch (createError) {
-            console.error('Failed to create database:', createError);
-        }
-        adminPool.end();
-    }
 };
-exports.testConnection = testConnection;
+exports.initDatabase = initDatabase;
 exports.default = pool;
 //# sourceMappingURL=database.js.map

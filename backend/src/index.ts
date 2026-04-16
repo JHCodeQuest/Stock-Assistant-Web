@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 
 import authRoutes from './routes/auth.routes';
 import inventoryRoutes from './routes/inventory.routes';
+import { initDatabase } from './config/database';
 
 dotenv.config();
 
@@ -110,9 +111,21 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 });
 
 const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Upload images to: http://localhost:${PORT}/uploads/images/`);
-});
+
+const startServer = async () => {
+  try {
+    await initDatabase();
+    
+    httpServer.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Upload images to: http://localhost:${PORT}/uploads/images/`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 export { io, app };

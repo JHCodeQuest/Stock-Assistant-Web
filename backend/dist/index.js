@@ -14,6 +14,7 @@ const socket_io_1 = require("socket.io");
 const dotenv_1 = __importDefault(require("dotenv"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const inventory_routes_1 = __importDefault(require("./routes/inventory.routes"));
+const database_1 = require("./config/database");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 exports.app = app;
@@ -102,8 +103,18 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Something went wrong!' });
 });
 const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Upload images to: http://localhost:${PORT}/uploads/images/`);
-});
+const startServer = async () => {
+    try {
+        await (0, database_1.initDatabase)();
+        httpServer.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+            console.log(`Upload images to: http://localhost:${PORT}/uploads/images/`);
+        });
+    }
+    catch (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    }
+};
+startServer();
 //# sourceMappingURL=index.js.map

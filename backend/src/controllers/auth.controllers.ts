@@ -1,30 +1,26 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-
-const MOCK_USERS: { id: number; email: string; password_hash: string; name: string; role: string }[] = [];
+import pool from '../config/database';
 
 export const register = async (req: Request, res: Response) => {
   try {
     const { email, password, name } = req.body;
     
-    const existingUser = MOCK_USERS.find(u => u.email === email);
-    if (existingUser) {
+    const existingUser = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (existingUser.rows.length > 0) {
       return res.status(400).json({ error: 'User already exists' });
     }
     
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
-    const newUser = {
-      id: MOCK_USERS.length + 1,
-      email,
-      password_hash: hashedPassword,
-      name: name || email.split('@')[0],
-      role: 'admin'
-    };
+    const result = await pool.query(
+      'INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role',
+      [email, hashedPassword, name || email.split('@')[0], 'admin']
+    );
     
-    MOCK_USERS.push(newUser);
+    const newUser = result.rows[0];
     
     const token = jwt.sign(
       { id: newUser.id, email: newUser.email },
@@ -51,7 +47,8 @@ export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
     
-    const user = MOCK_USERS.find(u => u.email === email);
+    const result = await pool.query('SELECT id, email, password_hash, name, role FROM users WHERE email = $1', [email]);
+    const user = result.rows[0];
     
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
