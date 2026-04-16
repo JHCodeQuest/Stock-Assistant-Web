@@ -14,7 +14,7 @@
    - **Branch**: `main`
    - **Root Directory**: `backend`
    - **Runtime**: Node
-   - **Build Command**: `npm install`
+   - **Build Command**: `npm install && npm run build`
    - **Start Command**: `npm start`
 
 5. Add Environment Variables (click **Environment** tab):
