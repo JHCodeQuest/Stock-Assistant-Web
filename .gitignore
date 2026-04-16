@@ -26,6 +26,7 @@ Thumbs.db
 dist/
 build/
 frontend/build/
+!docs/
 
 # TypeScript cache
 *.tsbuildinfo
