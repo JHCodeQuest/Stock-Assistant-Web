@@ -1,6 +1,5 @@
 import bcrypt from 'bcryptjs';
 import pool from './config/database';
-import jwt from 'jsonwebtoken';
 
 const seed = async () => {
   try {
@@ -21,9 +20,7 @@ const seed = async () => {
         [email, hashedPassword, name, 'admin']
       );
       
-      console.log(`Test user created: ${email} / ${password}`);
-    } else {
-      console.log(`Test user already exists: ${email}`);
+      console.log(`Test user: ${email} / ${password}`);
     }
 
     const sampleInventory = [
@@ -41,7 +38,6 @@ const seed = async () => {
           'INSERT INTO inventory (name, sku, quantity, min_stock_level, category, location) VALUES ($1, $2, $3, $4, $5, $6)',
           [item.name, item.sku, item.quantity, item.min_stock_level, item.category, item.location]
         );
-        console.log(`Added inventory: ${item.name}`);
       }
     }
 

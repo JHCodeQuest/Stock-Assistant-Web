@@ -16,10 +16,7 @@ const seed = async () => {
             const salt = await bcryptjs_1.default.genSalt(10);
             const hashedPassword = await bcryptjs_1.default.hash(password, salt);
             await database_1.default.query('INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, $4)', [email, hashedPassword, name, 'admin']);
-            console.log(`Test user created: ${email} / ${password}`);
-        }
-        else {
-            console.log(`Test user already exists: ${email}`);
+            console.log(`Test user: ${email} / ${password}`);
         }
         const sampleInventory = [
             { name: 'Hex Bolt M8', sku: 'BLT-HX-001', quantity: 500, min_stock_level: 100, category: 'Fasteners', location: 'A-1-1' },
@@ -32,7 +29,6 @@ const seed = async () => {
             const existing = await database_1.default.query('SELECT id FROM inventory WHERE sku = $1', [item.sku]);
             if (existing.rows.length === 0) {
                 await database_1.default.query('INSERT INTO inventory (name, sku, quantity, min_stock_level, category, location) VALUES ($1, $2, $3, $4, $5, $6)', [item.name, item.sku, item.quantity, item.min_stock_level, item.category, item.location]);
-                console.log(`Added inventory: ${item.name}`);
             }
         }
         console.log('Seeding complete!');
