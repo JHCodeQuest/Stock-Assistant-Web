@@ -7,6 +7,7 @@ exports.login = exports.register = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const database_1 = __importDefault(require("../config/database"));
+const email_1 = require("../services/email");
 const register = async (req, res) => {
     try {
         const { email, password, name } = req.body;
@@ -19,6 +20,7 @@ const register = async (req, res) => {
         const result = await database_1.default.query('INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role', [email, hashedPassword, name || email.split('@')[0], 'admin']);
         const newUser = result.rows[0];
         const token = jsonwebtoken_1.default.sign({ id: newUser.id, email: newUser.email }, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '24h' });
+        (0, email_1.sendWelcomeEmail)(email, newUser.name);
         res.status(201).json({
             user: {
                 id: newUser.id,

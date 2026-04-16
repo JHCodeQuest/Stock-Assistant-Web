@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/database';
+import { sendWelcomeEmail } from '../services/email';
 
 export const register = async (req: Request, res: Response) => {
   try {
@@ -27,6 +28,8 @@ export const register = async (req: Request, res: Response) => {
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
     );
+    
+    sendWelcomeEmail(email, newUser.name);
     
     res.status(201).json({
       user: {
