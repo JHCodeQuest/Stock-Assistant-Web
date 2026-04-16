@@ -220,11 +220,23 @@ REACT_APP_API_URL=http://localhost:5000/api
 
 ## Production Deployment
 
-1. Set up PostgreSQL database
-2. Run database migrations from `/database/` folder
-3. Set environment variables
-4. Build frontend: `npm run build`
-5. Serve static files from backend or use CDN
+### Free Hosting
+
+**Frontend**: [GitHub Pages](https://pages.github.com) - Free static hosting
+**Backend**: [Render](https://render.com) - Free tier with sleep after 15min inactivity
+
+See [DEPLOY.md](./DEPLOY.md) for step-by-step instructions.
+
+### Quick Deploy Summary
+
+1. **Frontend**: Settings → Pages → Source: main branch
+2. **Backend**: Create Web Service on Render, connect GitHub repo
+3. **Database**: Create PostgreSQL on Render, copy connection string
+4. **Update**: Set `REACT_APP_API_URL` in frontend to your Render URL
+
+Your app will be available at:
+- Frontend: `https://JHCodeQuest.github.io/Stock-Assistant-Web`
+- Backend: `https://stock-assistant-api.onrender.com`
 
 ## License
 
