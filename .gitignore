@@ -27,6 +27,7 @@ dist/
 build/
 frontend/build/
 !docs/
+!backend/dist/
 
 # TypeScript cache
 *.tsbuildinfo
