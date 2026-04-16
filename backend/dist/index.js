@@ -16,12 +16,25 @@ const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const inventory_routes_1 = __importDefault(require("./routes/inventory.routes"));
 const database_1 = require("./config/database");
 dotenv_1.default.config();
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://jhcodequest.github.io',
+    process.env.FRONTEND_URL
+].filter(Boolean);
 const app = (0, express_1.default)();
 exports.app = app;
 const httpServer = (0, http_1.createServer)(app);
 const io = new socket_io_1.Server(httpServer, {
     cors: {
-        origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+        origin: (origin, callback) => {
+            if (!origin || allowedOrigins.includes(origin)) {
+                callback(null, true);
+            }
+            else {
+                callback(null, true);
+            }
+        },
         credentials: true
     }
 });
@@ -30,7 +43,14 @@ app.use((0, helmet_1.default)({
     crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 app.use((0, cors_1.default)({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        }
+        else {
+            callback(null, true);
+        }
+    },
     credentials: true
 }));
 app.use((0, morgan_1.default)('dev'));
