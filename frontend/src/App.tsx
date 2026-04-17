@@ -6,6 +6,7 @@ import InventoryMetrics from './components/dashboard/InventoryMetrics';
 import StockTable from './components/inventory/StockTable';
 import ImageSearch from './components/inventory/ImageSearch';
 import AddInventoryForm from './components/inventory/AddInventoryForm';
+import { ToastProvider } from './components/common/ToastProvider';
 
 const CATEGORY_MAPPINGS: { [key: string]: { category: string; skuPrefix: string } } = {
   bolt: { category: 'Fasteners', skuPrefix: 'BLT' },
@@ -513,6 +514,7 @@ const App: React.FC = () => {
   };
 
   return (
+    <ToastProvider>
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4">
@@ -602,6 +604,7 @@ const App: React.FC = () => {
         </Routes>
       </main>
     </div>
+    </ToastProvider>
   );
 };
 

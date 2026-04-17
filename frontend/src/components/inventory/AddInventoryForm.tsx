@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { addInventory as addInventoryApi } from '../../services/api';
 import { Spinner } from '../common/Loading';
+import toast from 'react-hot-toast';
 
 const CATEGORY_MAPPINGS: { [key: string]: { category: string; skuPrefix: string } } = {
   bolt: { category: 'Fasteners', skuPrefix: 'BLT' },
@@ -204,7 +205,7 @@ const AddInventoryForm: React.FC = () => {
         description: description.trim(),
       });
       
-      setSuccessMessage('Item added successfully!');
+      toast.success(`${name} added to inventory!`);
       queryClient.invalidateQueries(['inventory']);
       
       setTimeout(() => {
@@ -212,7 +213,7 @@ const AddInventoryForm: React.FC = () => {
       }, 1500);
     } catch (err: any) {
       const errorMsg = err.response?.data?.error || 'Failed to add item. Please try again.';
-      setErrors({ name: errorMsg });
+      toast.error(errorMsg);
     } finally {
       setIsSubmitting(false);
     }
