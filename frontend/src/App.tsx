@@ -318,8 +318,8 @@ const Login: React.FC = () => {
     
     try {
       const response = await loginApi({ email, password });
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+      sessionStorage.setItem('token', response.data.token);
+      sessionStorage.setItem('user', JSON.stringify(response.data.user));
       navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Login failed');
@@ -386,8 +386,8 @@ const Register: React.FC = () => {
     
     try {
       const response = await registerApi({ name, email, password });
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+      sessionStorage.setItem('token', response.data.token);
+      sessionStorage.setItem('user', JSON.stringify(response.data.user));
       navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed');
@@ -456,12 +456,12 @@ const Register: React.FC = () => {
 
 const Profile: React.FC = () => {
   const navigate = useNavigate();
-  const userJson = localStorage.getItem('user');
+  const userJson = sessionStorage.getItem('user');
   const user: User | null = userJson ? JSON.parse(userJson) : null;
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
     navigate('/login');
   };
 
@@ -501,15 +501,15 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const userJson = localStorage.getItem('user');
+    const userJson = sessionStorage.getItem('user');
     if (userJson) {
       setUser(JSON.parse(userJson));
     }
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
     setUser(null);
   };
 
