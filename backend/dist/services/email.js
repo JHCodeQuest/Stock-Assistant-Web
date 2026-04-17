@@ -2,8 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendWelcomeEmail = void 0;
 const resend_1 = require("resend");
-const resend = new resend_1.Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY ? new resend_1.Resend(process.env.RESEND_API_KEY) : null;
 const sendWelcomeEmail = async (email, name) => {
+    if (!resend) {
+        console.log('Email service not configured (RESEND_API_KEY not set). Skipping welcome email.');
+        return;
+    }
     try {
         await resend.emails.send({
             from: 'AI Stock Assistant <onboarding@resend.dev>',

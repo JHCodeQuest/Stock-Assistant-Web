@@ -1,120 +1,390 @@
-import React from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getInventory } from '../../services/api';
 import { Link } from 'react-router-dom';
+import { TableSkeleton } from '../common/Loading';
+
+type SortField = 'name' | 'sku' | 'category' | 'quantity' | 'location' | 'unit_price';
+type SortDirection = 'asc' | 'desc';
 
 const StockTable: React.FC = () => {
-  const queryClient = useQueryClient();
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['inventory'],
     queryFn: async () => {
       const response = await getInventory();
       return response.data;
     }
   });
+  
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [stockFilter, setStockFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
   const inventory = data || [];
+
+  const categories = useMemo(() => {
+    const cats = new Set(inventory.map((item: any) => item.category).filter(Boolean));
+    return ['all', ...Array.from(cats).sort()];
+  }, [inventory]);
 
   const getStatusBadge = (item: any) => {
     if (item.quantity === 0) {
-      return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Out of Stock</span>;
+      return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-700">Out of Stock</span>;
     }
     if (item.quantity <= (item.min_stock_level || 10)) {
-      return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Low Stock</span>;
+      return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-700">Low Stock</span>;
     }
-    return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">In Stock</span>;
+    return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700">In Stock</span>;
   };
 
-  if (isLoading) return <div className="text-center py-4">Loading...</div>;
-  if (error) return <div className="text-center py-4 text-red-600">Error loading inventory</div>;
+  const filteredAndSortedInventory = useMemo(() => {
+    let result = [...inventory];
+
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter((item: any) =>
+        item.name?.toLowerCase().includes(term) ||
+        item.sku?.toLowerCase().includes(term) ||
+        item.category?.toLowerCase().includes(term) ||
+        item.location?.toLowerCase().includes(term)
+      );
+    }
+
+    if (categoryFilter !== 'all') {
+      result = result.filter((item: any) => item.category === categoryFilter);
+    }
+
+    if (stockFilter !== 'all') {
+      if (stockFilter === 'out') {
+        result = result.filter((item: any) => item.quantity === 0);
+      } else if (stockFilter === 'low') {
+        result = result.filter((item: any) => item.quantity > 0 && item.quantity <= (item.min_stock_level || 10));
+      } else if (stockFilter === 'ok') {
+        result = result.filter((item: any) => item.quantity > (item.min_stock_level || 10));
+      }
+    }
+
+    result.sort((a: any, b: any) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+      
+      if (sortField === 'unit_price') {
+        aVal = parseFloat(aVal) || 0;
+        bVal = parseFloat(bVal) || 0;
+      }
+      
+      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+      
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [inventory, searchTerm, sortField, sortDirection, categoryFilter, stockFilter]);
+
+  const totalPages = Math.ceil(filteredAndSortedInventory.length / itemsPerPage);
+  const paginatedInventory = filteredAndSortedInventory.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, categoryFilter, stockFilter]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const SortIcon: React.FC<{ field: SortField }> = ({ field }) => (
+    <span className={`ml-1 ${sortField === field ? 'text-blue-500' : 'text-gray-400'}`}>
+      {sortField === field ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+    </span>
+  );
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-lg shadow">
+        <TableSkeleton rows={5} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white rounded-lg shadow p-8 text-center">
+        <p className="text-red-500 mb-2">Error loading inventory</p>
+        <button
+          onClick={() => refetch()}
+          className="text-blue-500 hover:text-blue-700 underline"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <Link
-          to="/add-inventory"
-          className="bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600"
-        >
-          + Add Item
-        </Link>
-        <button
-          onClick={() => refetch()}
-          className="bg-gray-200 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-300"
-        >
-          Refresh
-        </button>
-      </div>
-      
-      {inventory.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-8 text-center">
-          <p className="text-gray-500 mb-4">No inventory items yet.</p>
+      <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
+        <div className="flex flex-wrap gap-2 items-center">
           <Link
             to="/add-inventory"
-            className="bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600"
+            className="bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
           >
-            Add Your First Item
+            <span>+</span> Add Item
           </Link>
+          <div className="flex items-center gap-2">
+            {isFetching && (
+              <span className="text-sm text-gray-500">Refreshing...</span>
+            )}
+            <button
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors flex items-center gap-2"
+            >
+              <svg className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 items-center">
+          <input
+            type="text"
+            placeholder="Search..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+          />
+          
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {categories.map(cat => (
+              <option key={cat} value={cat}>
+                {cat === 'all' ? 'All Categories' : cat}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={stockFilter}
+            onChange={(e) => setStockFilter(e.target.value)}
+            className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Stock</option>
+            <option value="out">Out of Stock</option>
+            <option value="low">Low Stock</option>
+            <option value="ok">In Stock</option>
+          </select>
+        </div>
+      </div>
+      
+      {filteredAndSortedInventory.length === 0 ? (
+        <div className="bg-white rounded-lg shadow p-8 text-center">
+          <div className="mb-4">
+            <svg className="w-16 h-16 mx-auto text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            </svg>
+          </div>
+          {searchTerm || categoryFilter !== 'all' || stockFilter !== 'all' ? (
+            <>
+              <p className="text-gray-500 mb-4">No items match your filters.</p>
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setCategoryFilter('all');
+                  setStockFilter('all');
+                }}
+                className="text-blue-500 hover:text-blue-700 underline"
+              >
+                Clear filters
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-500 mb-4">No inventory items yet.</p>
+              <Link
+                to="/add-inventory"
+                className="inline-block bg-blue-500 text-white py-2 px-6 rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                Add Your First Item
+              </Link>
+            </>
+          )}
         </div>
       ) : (
-        <div className="overflow-x-auto bg-white rounded-lg shadow">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Product
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  SKU
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Location
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Current Stock
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Min Level
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {(inventory as any[]).map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {item.name || 'N/A'}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {item.sku || 'N/A'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-medium">
-                      {item.location || 'N/A'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      item.quantity === 0 ? 'bg-red-100 text-red-800' :
-                      item.quantity <= (item.min_stock_level || 10) ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-blue-100 text-blue-800'
-                    }`}>
-                      {item.quantity}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {item.min_stock_level || 10}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(item)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="text-sm text-gray-500 mb-2">
+            Showing {filteredAndSortedInventory.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, filteredAndSortedInventory.length)} of {filteredAndSortedInventory.length} items
+            {filteredAndSortedInventory.length !== inventory.length && ` (filtered from ${inventory.length})`}
+          </div>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('name')}
+                    >
+                      Product <SortIcon field="name" />
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('sku')}
+                    >
+                      SKU <SortIcon field="sku" />
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('category')}
+                    >
+                      Category <SortIcon field="category" />
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('location')}
+                    >
+                      Location <SortIcon field="location" />
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('quantity')}
+                    >
+                      Quantity <SortIcon field="quantity" />
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('unit_price')}
+                    >
+                      Unit Price <SortIcon field="unit_price" />
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {paginatedInventory.map((item: any, index: number) => (
+                    <tr key={item.id} className={`hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          {item.image_url && (
+                            <img
+                              src={item.image_url}
+                              alt={item.name}
+                              className="w-10 h-10 rounded object-cover"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                          )}
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{item.name || 'N/A'}</div>
+                            {item.description && (
+                              <div className="text-xs text-gray-500 truncate max-w-xs">{item.description}</div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-600 font-mono bg-gray-100 px-2 py-1 rounded">
+                          {item.sku || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {item.category || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">
+                          {item.location || '-'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {item.quantity}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        ${parseFloat(item.unit_price || 0).toFixed(2)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getStatusBadge(item)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-6 py-4 border-t">
+                <div className="text-sm text-gray-500">
+                  Page {currentPage} of {totalPages}
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 rounded border hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Previous
+                  </button>
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`w-10 h-10 rounded border transition-colors ${
+                          currentPage === pageNum
+                            ? 'bg-blue-500 text-white border-blue-500'
+                            : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 rounded border hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

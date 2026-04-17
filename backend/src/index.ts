@@ -18,7 +18,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'https://jhcodequest.github.io',
   process.env.FRONTEND_URL
-].filter(Boolean);
+].filter(Boolean) as string[];
 
 const app = express();
 const httpServer = createServer(app);
@@ -29,7 +29,7 @@ const io = new Server(httpServer, {
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(null, true);
+        callback(new Error('Not allowed by CORS'));
       }
     },
     credentials: true
@@ -44,7 +44,7 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(null, true);
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true

@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { login as loginApi, register as registerApi, addInventory as addInventoryApi, getInventory } from './services/api';
+import { login as loginApi, register as registerApi, getInventory } from './services/api';
 import InventoryMetrics from './components/dashboard/InventoryMetrics';
 import StockTable from './components/inventory/StockTable';
 import ImageSearch from './components/inventory/ImageSearch';
+import AddInventoryForm from './components/inventory/AddInventoryForm';
+import { ToastProvider } from './components/common/ToastProvider';
 
 const CATEGORY_MAPPINGS: { [key: string]: { category: string; skuPrefix: string } } = {
   bolt: { category: 'Fasteners', skuPrefix: 'BLT' },
@@ -304,283 +306,6 @@ const WarehouseQuery: React.FC = () => {
   );
 };
 
-const AddInventory: React.FC = () => {
-  const [name, setName] = useState('');
-  const [sku, setSku] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [minStock, setMinStock] = useState('10');
-  const [category, setCategory] = useState('');
-  const [location, setLocation] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [description, setDescription] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [detectedLabels, setDetectedLabels] = useState<string[]>([]);
-  const navigate = useNavigate();
-  const modelRef = useRef<any>(null);
-  
-  useEffect(() => {
-    const loadModel = async () => {
-      try {
-        const tf = await import('@tensorflow/tfjs');
-        const mobilenet = await import('@tensorflow-models/mobilenet');
-        await tf.ready();
-        modelRef.current = await mobilenet.load({ version: 2, alpha: 1.0 });
-      } catch (err) {
-        console.log('AI model not available');
-      }
-    };
-    loadModel();
-  }, []);
-
-  const analyzeImage = async (file: File) => {
-    if (!modelRef.current) return;
-    
-    setIsAnalyzing(true);
-    try {
-      const img = document.createElement('img');
-      img.src = URL.createObjectURL(file);
-      
-      await new Promise<void>((resolve) => {
-        img.onload = () => resolve();
-      });
-      
-      const predictions = await modelRef.current.classify(img, 5);
-      const labels = predictions
-        .filter((p: any) => p.probability > 0.01)
-        .map((p: any) => p.className.toLowerCase());
-      
-      const allTerms: string[] = [];
-      labels.forEach((label: string) => {
-        label.split(/[\s\-_]+/).forEach((word: string) => {
-          if (word.length > 2) allTerms.push(word);
-        });
-        allTerms.push(label.split(',')[0].trim());
-      });
-      
-      const uniqueLabels = [...new Set(allTerms)];
-      setDetectedLabels(uniqueLabels);
-      
-      if (uniqueLabels.length > 0) {
-        const { category: suggestedCategory, skuPrefix } = getCategoryAndSku(uniqueLabels[0]);
-        if (!category) setCategory(suggestedCategory);
-        if (!sku) {
-          const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-          setSku(`${skuPrefix}-${randomNum}`);
-        }
-      }
-    } catch (err) {
-      console.error('Image analysis error:', err);
-    }
-    setIsAnalyzing(false);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    
-    try {
-      let finalImageUrl = imageUrl;
-      
-      if (imageFile) {
-        const formData = new FormData();
-        formData.append('image', imageFile);
-        
-        const uploadResponse = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (uploadResponse.ok) {
-          const uploadData = await uploadResponse.json();
-          finalImageUrl = uploadData.url;
-        }
-      }
-      
-      await addInventoryApi({
-        name,
-        sku,
-        quantity: parseInt(quantity),
-        min_stock_level: parseInt(minStock),
-        category,
-        location,
-        image_url: finalImageUrl,
-        description,
-      });
-      setSuccess(true);
-      setTimeout(() => {
-        navigate('/inventory');
-      }, 1500);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to add item');
-    }
-  };
-
-  return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6">Add Inventory Item</h1>
-      <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl">
-        {error && <div className="mb-4 text-red-500 text-center">{error}</div>}
-        {success ? (
-          <div className="text-green-600 text-center py-8">
-            <p className="text-xl font-semibold">Item added successfully!</p>
-            <p>Redirecting to inventory...</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className="block text-gray-700 text-sm font-bold mb-2">
-                  Product Name *
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter product name"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-sm font-bold mb-2">
-                  SKU *
-                </label>
-                <input
-                  type="text"
-                  value={sku}
-                  onChange={(e) => setSku(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="SKU-001"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-sm font-bold mb-2">
-                  Category
-                </label>
-                <input
-                  type="text"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Electronics"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-sm font-bold mb-2">
-                  Warehouse Location
-                </label>
-                <input
-                  type="text"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="A-1-3 (Isle-Row-Shelf)"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-sm font-bold mb-2">
-                  Quantity *
-                </label>
-                <input
-                  type="number"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="0"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-sm font-bold mb-2">
-                  Min Stock Level
-                </label>
-                <input
-                  type="number"
-                  value={minStock}
-                  onChange={(e) => setMinStock(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="10"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-sm font-bold mb-2">
-                  Product Image
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setImageFile(file);
-                      setImageUrl(`/uploads/images/${file.name}`);
-                      analyzeImage(file);
-                    }
-                  }}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {imageFile && (
-                  <p className="text-sm text-gray-500 mt-1">Selected: {imageFile.name}</p>
-                )}
-                {isAnalyzing && (
-                  <p className="text-sm text-blue-500 mt-1">🤖 AI analyzing image...</p>
-                )}
-              </div>
-              {detectedLabels.length > 0 && (
-                <div className="col-span-2 bg-purple-50 p-3 rounded-lg">
-                  <p className="text-sm font-semibold text-purple-800 mb-2">🤖 AI Detected:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {detectedLabels.slice(0, 5).map((label, i) => (
-                      <span key={i} className="bg-purple-200 text-purple-800 px-2 py-1 rounded text-xs">
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                  {sku && (
-                    <p className="text-xs text-purple-600 mt-2">
-                      Suggested SKU: <strong>{sku}</strong> | Category: <strong>{category}</strong>
-                    </p>
-                  )}
-                </div>
-              )}
-              <div className="col-span-2">
-                <label className="block text-gray-700 text-sm font-bold mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Product description..."
-                  rows={3}
-                />
-              </div>
-            </div>
-            <div className="mt-6 flex gap-4">
-              <button
-                type="submit"
-                className="bg-blue-500 text-white py-2 px-6 rounded-lg hover:bg-blue-600"
-              >
-                Add Item
-              </button>
-              <Link
-                to="/inventory"
-                className="bg-gray-300 text-gray-700 py-2 px-6 rounded-lg hover:bg-gray-400"
-              >
-                Cancel
-              </Link>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
-  );
-};
-
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -789,6 +514,7 @@ const App: React.FC = () => {
   };
 
   return (
+    <ToastProvider>
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4">
@@ -871,13 +597,14 @@ const App: React.FC = () => {
           <Route path="/find-items" element={<FindItems />} />
           <Route path="/image-search" element={<ImageSearch />} />
           <Route path="/warehouse" element={<WarehouseQuery />} />
-          <Route path="/add-inventory" element={<AddInventory />} />
+          <Route path="/add-inventory" element={<AddInventoryForm />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/profile" element={<Profile />} />
         </Routes>
       </main>
     </div>
+    </ToastProvider>
   );
 };
 

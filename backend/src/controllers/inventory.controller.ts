@@ -80,12 +80,12 @@ export const addInventory = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { name, sku, quantity, min_stock_level, category, location, image_url, description } = req.body;
+    const { name, sku, quantity, min_stock_level, unit_price, category, location, image_url, description } = req.body;
     
     const result = await pool.query(
-      `INSERT INTO inventory (name, sku, quantity, min_stock_level, category, location, image_url, description)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [name, sku, quantity, min_stock_level || 10, category || 'General', location, image_url, description]
+      `INSERT INTO inventory (name, sku, quantity, min_stock_level, unit_price, category, location, image_url, description)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [name, sku, quantity, min_stock_level || 10, unit_price || 0, category || 'General', location, image_url, description]
     );
     
     res.status(201).json(result.rows[0]);

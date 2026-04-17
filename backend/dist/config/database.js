@@ -35,6 +35,7 @@ const initDatabase = async () => {
         sku VARCHAR(30) NOT NULL,
         quantity SMALLINT DEFAULT 0,
         min_stock_level SMALLINT DEFAULT 10,
+        unit_price DECIMAL(10,2) DEFAULT 0,
         category VARCHAR(50),
         location VARCHAR(15),
         image_url VARCHAR(255),
@@ -42,6 +43,14 @@ const initDatabase = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+        await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='inventory' AND column_name='unit_price') THEN
+          ALTER TABLE inventory ADD COLUMN unit_price DECIMAL(10,2) DEFAULT 0;
+        END IF;
+      END $$;
     `);
         await client.query(`
       CREATE TABLE IF NOT EXISTS inventory_history (
