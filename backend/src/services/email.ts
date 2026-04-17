@@ -1,8 +1,13 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 export const sendWelcomeEmail = async (email: string, name: string) => {
+  if (!resend) {
+    console.log('Email service not configured (RESEND_API_KEY not set). Skipping welcome email.');
+    return;
+  }
+
   try {
     await resend.emails.send({
       from: 'AI Stock Assistant <onboarding@resend.dev>',

@@ -32,7 +32,7 @@ const io = new socket_io_1.Server(httpServer, {
                 callback(null, true);
             }
             else {
-                callback(null, true);
+                callback(new Error('Not allowed by CORS'));
             }
         },
         credentials: true
@@ -48,7 +48,7 @@ app.use((0, cors_1.default)({
             callback(null, true);
         }
         else {
-            callback(null, true);
+            callback(new Error('Not allowed by CORS'));
         }
     },
     credentials: true
