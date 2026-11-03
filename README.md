@@ -115,6 +115,24 @@ npm start
 
 Access the app at: http://localhost:3000
 
+### Running the tests
+
+The backend API tests need a throwaway PostgreSQL database. They empty every table, so they
+refuse to run unless the database name contains `test`.
+
+```bash
+docker run -d --rm --name stock-assistant-test-db -p 55432:5432 \
+  -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=stock_test \
+  postgres:16-alpine
+
+cd backend
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/stock_test npm test
+
+docker stop stock-assistant-test-db
+```
+
+The tests set their own `JWT_SECRET` and never send email.
+
 ## API Endpoints
 
 ### Authentication
