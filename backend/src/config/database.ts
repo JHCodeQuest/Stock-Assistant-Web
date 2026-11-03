@@ -3,15 +3,54 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Hosted databases' external URLs (Render, Neon, Supabase) need TLS; local and Render-internal
+// hosts don't. DATABASE_SSL=true or false overrides the guess.
+const sslSetting = () => {
+  if (process.env.DATABASE_SSL === 'true') return { rejectUnauthorized: false };
+  if (process.env.DATABASE_SSL === 'false') return false;
+  const url = process.env.DATABASE_URL || '';
+  return /sslmode=require|render\.com|neon\.tech|supabase\.co/.test(url) ? { rejectUnauthorized: false } : false;
+};
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('render.com') ? { rejectUnauthorized: false } : false,
+  ssl: sslSetting(),
   max: 5,
 });
 
 pool.on('error', (err) => {
   console.error('Unexpected database error:', err);
 });
+
+let ready = false;
+
+// True once the tables exist and the API can serve data.
+export const isDatabaseReady = () => ready;
+
+export const checkDatabase = async (): Promise<boolean> => {
+  try {
+    await pool.query('SELECT 1');
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// Keeps retrying in the background (2s, 4s, 8s ... up to 60s) instead of exiting. Exiting made
+// Render restart the service in a loop with no port open, so every request just hung.
+export const connectWithRetry = async (attempt = 1): Promise<void> => {
+  if (!process.env.DATABASE_URL) {
+    console.error('DATABASE_URL is not set: the API is up but cannot serve data.');
+    return;
+  }
+  try {
+    await initDatabase();
+  } catch (error: any) {
+    const delaySeconds = Math.min(60, 2 ** attempt);
+    console.error(`Database unavailable (${error?.code || error?.message}); retry ${attempt} in ${delaySeconds}s`);
+    setTimeout(() => connectWithRetry(attempt + 1), delaySeconds * 1000);
+  }
+};
 
 export const initDatabase = async () => {
   const client = await pool.connect();
@@ -69,6 +108,7 @@ export const initDatabase = async () => {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_inventory_location ON inventory(location)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_history_product ON inventory_history(product_id)`);
 
+    ready = true;
     console.log('Database tables initialized');
   } finally {
     client.release();

@@ -9,7 +9,7 @@ import dotenv from 'dotenv';
 
 import authRoutes from './routes/auth.routes';
 import inventoryRoutes from './routes/inventory.routes';
-import { initDatabase } from './config/database';
+import { checkDatabase, connectWithRetry, isDatabaseReady } from './config/database';
 
 dotenv.config();
 
@@ -80,8 +80,24 @@ app.get('/', (req: Request, res: Response) => {
   res.json({ message: 'Stock Inventory API is running' });
 });
 
-app.get('/api/health', (req: Request, res: Response) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+// 200 only when the database answers, so Render's health check and anyone debugging can see
+// a database problem instead of a hang.
+app.get('/api/health', async (req: Request, res: Response) => {
+  const database = !process.env.DATABASE_URL
+    ? 'not configured'
+    : !isDatabaseReady()
+      ? 'connecting'
+      : (await checkDatabase())
+        ? 'connected'
+        : 'unreachable';
+  const ok = database === 'connected';
+  res.status(ok ? 200 : 503).json({ status: ok ? 'OK' : 'DEGRADED', database, timestamp: new Date().toISOString() });
+});
+
+// Until the database is ready, data routes say so instead of each failing its own way.
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  if (isDatabaseReady()) return next();
+  res.status(503).json({ error: 'Database unavailable. Try again shortly.' });
 });
 
 app.use('/api/auth', authRoutes);
@@ -131,18 +147,14 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
 const PORT = process.env.PORT || 5000;
 
-const startServer = async () => {
-  try {
-    await initDatabase();
-    
-    httpServer.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Upload images to: http://localhost:${PORT}/uploads/images/`);
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  }
+// Listen first, then connect: the API always answers (health says what is wrong) while the
+// database connection retries in the background.
+const startServer = () => {
+  httpServer.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`Upload images to: http://localhost:${PORT}/uploads/images/`);
+  });
+  connectWithRetry();
 };
 
 startServer();

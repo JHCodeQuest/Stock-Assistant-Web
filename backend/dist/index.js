@@ -80,8 +80,21 @@ app.post('/api/upload', (req, res) => {
 app.get('/', (req, res) => {
     res.json({ message: 'Stock Inventory API is running' });
 });
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+app.get('/api/health', async (req, res) => {
+    const database = !process.env.DATABASE_URL
+        ? 'not configured'
+        : !(0, database_1.isDatabaseReady)()
+            ? 'connecting'
+            : (await (0, database_1.checkDatabase)())
+                ? 'connected'
+                : 'unreachable';
+    const ok = database === 'connected';
+    res.status(ok ? 200 : 503).json({ status: ok ? 'OK' : 'DEGRADED', database, timestamp: new Date().toISOString() });
+});
+app.use('/api', (req, res, next) => {
+    if ((0, database_1.isDatabaseReady)())
+        return next();
+    res.status(503).json({ error: 'Database unavailable. Try again shortly.' });
 });
 app.use('/api/auth', auth_routes_1.default);
 app.use('/api/inventory', inventory_routes_1.default);
@@ -123,18 +136,12 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Something went wrong!' });
 });
 const PORT = process.env.PORT || 5000;
-const startServer = async () => {
-    try {
-        await (0, database_1.initDatabase)();
-        httpServer.listen(PORT, () => {
-            console.log(`Server running on port ${PORT}`);
-            console.log(`Upload images to: http://localhost:${PORT}/uploads/images/`);
-        });
-    }
-    catch (error) {
-        console.error('Failed to start server:', error);
-        process.exit(1);
-    }
+const startServer = () => {
+    httpServer.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+        console.log(`Upload images to: http://localhost:${PORT}/uploads/images/`);
+    });
+    (0, database_1.connectWithRetry)();
 };
 startServer();
 //# sourceMappingURL=index.js.map

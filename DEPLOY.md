@@ -22,22 +22,32 @@
    NODE_ENV = production
    PORT = 10000
    JWT_SECRET = your-secure-jwt-secret-here
-   DB_HOST = your-postgres-host
-   DB_PORT = 5432
-   DB_NAME = stock_inventory
-   DB_USER = your-db-user
-   DB_PASSWORD = your-db-password
+   DATABASE_URL = postgresql://user:password@host:5432/dbname
    ```
+   `DATABASE_URL` is the only database setting the code reads (not `DB_HOST`, `DB_USER` etc).
 
-6. Click **Create Web Service**
+6. Under **Settings** → **Health Check Path**, enter `/api/health`. It returns 200 only when
+   the database answers, and 503 with `"database": "not configured" | "connecting" | "unreachable"`
+   otherwise, so a database problem shows up straight away instead of as a hanging request.
 
-7. Wait for deployment (~2-3 minutes)
+7. Click **Create Web Service**
 
-8. Note your URL: `https://stock-assistant-api.onrender.com`
+8. Wait for deployment (~2-3 minutes)
+
+9. Note your URL: `https://stock-assistant-api.onrender.com`
 
 ---
 
-## Free Database (Render PostgreSQL)
+## Database
+
+**Render's free PostgreSQL is deleted 30 days after it is created.** That is the likely reason
+this app's API stopped responding in 2026: it used to exit whenever it couldn't connect. For a
+demo that should stay up, use a free database that doesn't expire (for example Neon or Supabase) and
+paste its connection string into `DATABASE_URL`; TLS is switched on for those hosts automatically.
+The API now stays up without a database, retries in the background, and reports the state on
+`/api/health`.
+
+### Option: Render PostgreSQL (expires after 30 days on the free plan)
 
 1. Click **New +** → **PostgreSQL**
 

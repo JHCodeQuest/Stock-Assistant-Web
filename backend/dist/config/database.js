@@ -3,18 +3,54 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cleanupOldHistory = exports.initDatabase = void 0;
+exports.cleanupOldHistory = exports.initDatabase = exports.connectWithRetry = exports.checkDatabase = exports.isDatabaseReady = void 0;
 const pg_1 = require("pg");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
+const sslSetting = () => {
+    if (process.env.DATABASE_SSL === 'true')
+        return { rejectUnauthorized: false };
+    if (process.env.DATABASE_SSL === 'false')
+        return false;
+    const url = process.env.DATABASE_URL || '';
+    return /sslmode=require|render\.com|neon\.tech|supabase\.co/.test(url) ? { rejectUnauthorized: false } : false;
+};
 const pool = new pg_1.Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL?.includes('render.com') ? { rejectUnauthorized: false } : false,
+    ssl: sslSetting(),
     max: 5,
 });
 pool.on('error', (err) => {
     console.error('Unexpected database error:', err);
 });
+let ready = false;
+const isDatabaseReady = () => ready;
+exports.isDatabaseReady = isDatabaseReady;
+const checkDatabase = async () => {
+    try {
+        await pool.query('SELECT 1');
+        return true;
+    }
+    catch {
+        return false;
+    }
+};
+exports.checkDatabase = checkDatabase;
+const connectWithRetry = async (attempt = 1) => {
+    if (!process.env.DATABASE_URL) {
+        console.error('DATABASE_URL is not set: the API is up but cannot serve data.');
+        return;
+    }
+    try {
+        await (0, exports.initDatabase)();
+    }
+    catch (error) {
+        const delaySeconds = Math.min(60, 2 ** attempt);
+        console.error(`Database unavailable (${error?.code || error?.message}); retry ${attempt} in ${delaySeconds}s`);
+        setTimeout(() => (0, exports.connectWithRetry)(attempt + 1), delaySeconds * 1000);
+    }
+};
+exports.connectWithRetry = connectWithRetry;
 const initDatabase = async () => {
     const client = await pool.connect();
     try {
@@ -66,6 +102,7 @@ const initDatabase = async () => {
         await client.query(`CREATE INDEX IF NOT EXISTS idx_inventory_category ON inventory(category)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_inventory_location ON inventory(location)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_history_product ON inventory_history(product_id)`);
+        ready = true;
         console.log('Database tables initialized');
     }
     finally {
