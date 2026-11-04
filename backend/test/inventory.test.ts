@@ -65,7 +65,7 @@ describe('POST /api/inventory/add', () => {
     { name: undefined }, { name: '   ' }, { name: {} }, { name: 'a'.repeat(151) },
     { sku: undefined }, { sku: 'x'.repeat(31) },
     { quantity: undefined }, { quantity: -1 }, { quantity: 1.5 },
-    { quantity: '5' }, { quantity: 32768 },
+    { quantity: '5' }, { quantity: 2147483648 },
     { min_stock_level: -1 }, { min_stock_level: '10' },
     { unit_price: -1 }, { unit_price: 1.234 }, { unit_price: '5' },
     { category: 'x'.repeat(51) }, { location: 'x'.repeat(16) },
@@ -174,7 +174,7 @@ describe('POST /api/inventory/adjust', () => {
     { productId: undefined }, { productId: {} }, { productId: -1 },
     { adjustmentType: 'multiply' }, { adjustmentType: undefined },
     { quantity: undefined }, { quantity: -1 }, { quantity: 1.5 },
-    { quantity: '5' }, { quantity: 0 }, { quantity: 32768 },
+    { quantity: '5' }, { quantity: 0 }, { quantity: 2147483648 },
     { reason: {} }, { reason: 'x'.repeat(201) },
   ])('rejects invalid adjustments without changing stock or history: %j', async (invalid) => {
     const item = await addItem(sampleItems[1]);
@@ -285,5 +285,32 @@ describe('image-match validation', () => {
       .set('Authorization', inventoryAuthorization()).send({ filename });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Invalid request body');
+  });
+});
+
+describe('INTEGER stock quantities and product IDs', () => {
+  it('creates and adjusts an item above the SMALLINT limits and reads its history', async () => {
+    await pool.query("SELECT setval(pg_get_serial_sequence('inventory', 'id'), 40000, false)");
+    const item = await addItem({ ...sampleItems[0], quantity: 100000, min_stock_level: 50000 });
+    expect(item.id).toBe(40000);
+    expect(item.quantity).toBe(100000);
+
+    const adjusted = await request(app).post('/api/inventory/adjust')
+      .set('Authorization', inventoryAuthorization())
+      .send({ productId: item.id, adjustmentType: 'add', quantity: 50000 });
+    expect(adjusted.status).toBe(200);
+    expect(adjusted.body).toMatchObject({ previousQuantity: 100000, newQuantity: 150000 });
+    const history = await request(app).get('/api/inventory/history/' + item.id)
+      .set('Authorization', inventoryAuthorization());
+    expect(history.status).toBe(200);
+    expect(history.body).toEqual([expect.objectContaining({
+      product_id: 40000, quantity: 50000, previous_quantity: 100000,
+    })]);
+  });
+
+  it('accepts the maximum INTEGER stock count and minimum-stock threshold', async () => {
+    const item = await addItem({ ...sampleItems[0], quantity: 2147483647, min_stock_level: 2147483647 });
+    expect(item.quantity).toBe(2147483647);
+    expect(item.min_stock_level).toBe(2147483647);
   });
 });
