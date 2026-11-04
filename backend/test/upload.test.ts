@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
@@ -19,6 +19,8 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   for (const name of await readdir(directory)) await rm(path.join(directory, name));
 });
 
@@ -117,5 +119,61 @@ describe('upload limits and image types', () => {
     expect((await request(app).get('/uploads/images/legacy.svg')).status).toBe(404);
     expect((await request(app).get('/uploads/images/')).status).toBe(404);
     expect((await request(app).get('/uploads/legacy.html')).status).toBe(404);
+  });
+});
+
+describe('production permanent storage', () => {
+  const cloudUrl = 'https://res.cloudinary.com/test-cloud/image/upload/v1/stock-assistant/stored.png';
+
+  it('returns a Cloudinary URL without writing anything to the app disk', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CLOUDINARY_CLOUD_NAME', 'test-cloud');
+    vi.stubEnv('CLOUDINARY_API_KEY', 'test-key');
+    vi.stubEnv('CLOUDINARY_API_SECRET', 'test-secret');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ secure_url: cloudUrl }), { status: 200 }
+    )));
+    const res = await upload().attach('image', png, 'test.png');
+    expect(res.status).toBe(200);
+    expect(res.body.url).toBe(cloudUrl);
+    expect(await readdir(directory)).toEqual([]);
+    // A new app instance with a different empty directory uses the same external storage.
+    const otherDirectory = await mkdtemp(path.join(tmpdir(), 'stock-upload-redeploy-test-'));
+    try {
+      const restarted = express();
+      restarted.use(createUploadRouter(otherDirectory));
+      vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ secure_url: cloudUrl }), { status: 200 }));
+      const again = await request(restarted).post('/api/upload')
+        .set('Authorization', 'Bearer ' + token()).attach('image', png, 'test.png');
+      expect(again.status).toBe(200);
+      expect(again.body.url).toBe(cloudUrl);
+      expect(await readdir(otherDirectory)).toEqual([]);
+    } finally {
+      await rm(otherDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('does not accept temporary-disk uploads when production storage is unconfigured', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CLOUDINARY_CLOUD_NAME', '');
+    vi.stubEnv('CLOUDINARY_API_KEY', '');
+    vi.stubEnv('CLOUDINARY_API_SECRET', '');
+    vi.stubGlobal('fetch', vi.fn());
+    const res = await upload().attach('image', png, 'test.png');
+    expect(res.status).toBe(503);
+    expect(res.body).not.toHaveProperty('url');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await readdir(directory)).toEqual([]);
+  });
+
+  it('returns 503 without a local fallback or provider details when storage fails', async () => {
+    vi.stubEnv('CLOUDINARY_CLOUD_NAME', 'test-cloud');
+    vi.stubEnv('CLOUDINARY_API_KEY', 'test-key');
+    vi.stubEnv('CLOUDINARY_API_SECRET', 'test-secret');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('private credentials error', { status: 401 })));
+    const res = await upload().attach('image', png, 'test.png');
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'Image storage is unavailable. Please try again later.' });
+    expect(await readdir(directory)).toEqual([]);
   });
 });
