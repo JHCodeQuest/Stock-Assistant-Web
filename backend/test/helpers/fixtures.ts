@@ -15,7 +15,7 @@ export const testUser = {
 };
 
 export const registerUser = async (user = testUser) => {
-  const res = await request(app).post('/api/auth/register').send(user);
+  const res = await request(app).post('/api/auth/register').send({ ...user, inviteCode: process.env.REGISTRATION_INVITE_CODE });
   return res.body as { user: { id: number; email: string; name: string; role: string }; token: string };
 };
 
