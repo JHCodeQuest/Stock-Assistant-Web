@@ -45,3 +45,21 @@ test('requests stop sending the token after logout clears the session', async ()
 
   expect(await authorizationHeader()).toBeUndefined();
 });
+
+test.each([401, 403, 500])('HTTP %s clears the session only for 401 and preserves the rejection', async (status) => {
+  sessionStorage.setItem('token', 'session-token');
+  sessionStorage.setItem('user', JSON.stringify({ name: 'Test User' }));
+  const error = { response: { status } };
+
+  await expect(api.get('/inventory', {
+    adapter: async () => { throw error; },
+  })).rejects.toBe(error);
+
+  if (status === 401) {
+    expect(sessionStorage.getItem('token')).toBeNull();
+    expect(sessionStorage.getItem('user')).toBeNull();
+  } else {
+    expect(sessionStorage.getItem('token')).toBe('session-token');
+    expect(sessionStorage.getItem('user')).not.toBeNull();
+  }
+});
