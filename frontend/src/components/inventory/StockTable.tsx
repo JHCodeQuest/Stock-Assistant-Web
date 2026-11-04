@@ -131,7 +131,7 @@ const StockTable: React.FC = () => {
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg shadow p-8 text-center">
+      <div role="alert" className="bg-white rounded-lg shadow p-8 text-center">
         <p className="text-red-500 mb-2">Error loading inventory</p>
         <button
           onClick={() => refetch()}
