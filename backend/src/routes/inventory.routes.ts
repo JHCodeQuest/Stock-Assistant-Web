@@ -12,6 +12,8 @@ import {
 
 const router = Router();
 
+router.use(authenticate);
+
 router.post('/add', addInventory);
 router.get('/', getInventory);
 router.get('/search', searchInventory);
