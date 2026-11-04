@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { Routes, Route, Link, Navigate, Outlet, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { login as loginApi, register as registerApi, getInventory } from './services/api';
+import { clearSession, saveSession, SESSION_CHANGED } from './services/session';
 import InventoryMetrics from './components/dashboard/InventoryMetrics';
 import StockTable from './components/inventory/StockTable';
 import ImageSearch from './components/inventory/ImageSearch';
@@ -318,8 +319,7 @@ const Login: React.FC = () => {
     
     try {
       const response = await loginApi({ email, password });
-      sessionStorage.setItem('token', response.data.token);
-      sessionStorage.setItem('user', JSON.stringify(response.data.user));
+      saveSession(response.data.token, response.data.user);
       navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Login failed');
@@ -386,8 +386,7 @@ const Register: React.FC = () => {
     
     try {
       const response = await registerApi({ name, email, password });
-      sessionStorage.setItem('token', response.data.token);
-      sessionStorage.setItem('user', JSON.stringify(response.data.user));
+      saveSession(response.data.token, response.data.user);
       navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed');
@@ -460,14 +459,12 @@ const Profile: React.FC = () => {
   const user: User | null = userJson ? JSON.parse(userJson) : null;
 
   const handleLogout = () => {
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
+    clearSession();
     navigate('/login');
   };
 
   if (!user) {
-    navigate('/login');
-    return null;
+    return <Navigate to="/login" replace />;
   }
 
   return (
@@ -497,21 +494,30 @@ const Profile: React.FC = () => {
   );
 };
 
+const ProtectedRoute = ({ token }: { token: string | null }) =>
+  token ? <Outlet /> : <Navigate to="/login" replace />;
+
 const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
+  const queryClient = useQueryClient();
+  const [token, setToken] = useState(() => sessionStorage.getItem('token'));
+  const [user, setUser] = useState<User | null>(() => {
+    const stored = sessionStorage.getItem('user');
+    return sessionStorage.getItem('token') && stored ? JSON.parse(stored) : null;
+  });
 
   useEffect(() => {
-    const userJson = sessionStorage.getItem('user');
-    if (userJson) {
-      setUser(JSON.parse(userJson));
-    }
-  }, []);
+    const updateSession = () => {
+      const nextToken = sessionStorage.getItem('token');
+      const stored = sessionStorage.getItem('user');
+      setToken(nextToken);
+      setUser(nextToken && stored ? JSON.parse(stored) : null);
+      if (!nextToken) queryClient.clear();
+    };
+    window.addEventListener(SESSION_CHANGED, updateSession);
+    return () => window.removeEventListener(SESSION_CHANGED, updateSession);
+  }, [queryClient]);
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
-    setUser(null);
-  };
+  const handleLogout = clearSession;
 
   return (
     <ToastProvider>
@@ -592,15 +598,17 @@ const App: React.FC = () => {
 
       <main>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/inventory" element={<Inventory />} />
-          <Route path="/find-items" element={<FindItems />} />
-          <Route path="/image-search" element={<ImageSearch />} />
-          <Route path="/warehouse" element={<WarehouseQuery />} />
-          <Route path="/add-inventory" element={<AddInventoryForm />} />
+          <Route element={<ProtectedRoute token={token} />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/inventory" element={<Inventory />} />
+            <Route path="/find-items" element={<FindItems />} />
+            <Route path="/image-search" element={<ImageSearch />} />
+            <Route path="/warehouse" element={<WarehouseQuery />} />
+            <Route path="/add-inventory" element={<AddInventoryForm />} />
+            <Route path="/profile" element={<Profile />} />
+          </Route>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/profile" element={<Profile />} />
         </Routes>
       </main>
     </div>
