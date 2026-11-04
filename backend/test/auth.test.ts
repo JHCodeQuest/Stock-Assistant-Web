@@ -91,7 +91,38 @@ describe('POST /api/auth/register', () => {
     );
     expect(rows[0].role).toBe('staff');
   });
-  it.todo('#11 (details in the private task)');
+  it.each([
+    { email: undefined },
+    { email: 'not-an-email' },
+    { email: { value: 'injected@example.com' } },
+    { password: undefined },
+    { password: 12345678 },
+    { password: 'short' },
+    { password: 'a'.repeat(73) },
+    { password: 'é'.repeat(37) },
+    { name: { html: '<script>' } },
+    { name: 'a'.repeat(101) },
+  ])('rejects malformed registration input without creating users: %j', async (invalid) => {
+    vi.mocked(sendWelcomeEmail).mockClear();
+    const res = await request(app).post('/api/auth/register')
+      .send({ ...testUser, inviteCode, ...invalid });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid request body');
+    expect(res.body).not.toHaveProperty('token');
+    expect(sendWelcomeEmail).not.toHaveBeenCalled();
+    const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM users');
+    expect(rows[0].count).toBe(0);
+  });
+
+  it('trims names and email addresses but preserves password whitespace', async () => {
+    const password = '  correct-horse-battery  ';
+    const res = await request(app).post('/api/auth/register')
+      .send({ ...testUser, email: '  ada.tester@example.com  ', name: '  Ada Tester  ', password, inviteCode });
+    expect(res.status).toBe(201);
+    expect(res.body.user).toMatchObject({ email: testUser.email, name: testUser.name });
+    const login = await request(app).post('/api/auth/login').send({ email: testUser.email, password });
+    expect(login.status).toBe(200);
+  });
 });
 
 describe('POST /api/auth/login', () => {
@@ -138,7 +169,20 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(200);
     expect(res.body.user.role).toBe('admin');
   });
-  it.todo('#11 (details in the private task)');
+  it.each([
+    {},
+    { email: testUser.email },
+    { password: testUser.password },
+    { email: 'invalid', password: testUser.password },
+    { email: testUser.email, password: [] },
+    { email: testUser.email, password: '' },
+    { email: testUser.email, password: 'a'.repeat(73) },
+  ])('returns 400 for malformed credentials: %j', async (body) => {
+    const res = await request(app).post('/api/auth/login').send(body);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid request body');
+    expect(res.body).not.toHaveProperty('token');
+  });
 });
 
 describe('authentication rate limits', () => {
