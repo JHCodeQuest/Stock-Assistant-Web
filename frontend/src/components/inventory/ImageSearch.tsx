@@ -1,3 +1,4 @@
+import { resolveImageUrl } from '../../services/urls';
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getInventory } from '../../services/api';
@@ -246,7 +247,7 @@ const ImageSearch: React.FC = () => {
   };
 
   const handleSelectItem = (item: any) => {
-    setSelectedImage(item.image_url);
+    setSelectedImage(resolveImageUrl(item.image_url));
   };
 
   return (
@@ -345,7 +346,7 @@ const ImageSearch: React.FC = () => {
                     <div className="flex gap-4">
                       {item.image_url && (
                         <img
-                          src={item.image_url}
+                          src={resolveImageUrl(item.image_url)}
                           alt={item.name}
                           className="w-20 h-20 object-cover rounded"
                           onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
