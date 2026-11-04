@@ -85,7 +85,6 @@ describe('login', () => {
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
     expect(currentPath()).toBe('/');
     expect(mockLogin).toHaveBeenCalledWith({ email: TEST_USER.email, password: TEST_PASSWORD });
-    // App.tsx stores the session in sessionStorage today; api.ts reads localStorage (#2).
     expect(sessionStorage.getItem('token')).toBe(TEST_TOKEN);
     expect(JSON.parse(sessionStorage.getItem('user') as string)).toEqual(TEST_USER);
     expect(localStorage.getItem('token')).toBeNull();
@@ -118,7 +117,6 @@ describe('login', () => {
     expect(currentPath()).toBe('/login');
   });
 
-  test.todo('#2 API requests send the token that login stored');
   test.todo('nav shows the signed-in user straight after login, without a reload');
 });
 
