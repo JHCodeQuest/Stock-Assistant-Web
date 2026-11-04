@@ -74,8 +74,8 @@ export const initDatabase = async () => {
         id SERIAL PRIMARY KEY,
         name VARCHAR(150) NOT NULL,
         sku VARCHAR(30) NOT NULL,
-        quantity SMALLINT DEFAULT 0,
-        min_stock_level SMALLINT DEFAULT 10,
+        quantity INTEGER DEFAULT 0,
+        min_stock_level INTEGER DEFAULT 10,
         unit_price DECIMAL(10,2) DEFAULT 0,
         category VARCHAR(50),
         location VARCHAR(15),
@@ -98,13 +98,37 @@ export const initDatabase = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS inventory_history (
         id SERIAL PRIMARY KEY,
-        product_id SMALLINT REFERENCES inventory(id) ON DELETE CASCADE,
+        product_id INTEGER REFERENCES inventory(id) ON DELETE CASCADE,
         adjustment_type VARCHAR(10) NOT NULL,
-        quantity SMALLINT NOT NULL,
-        previous_quantity SMALLINT,
+        quantity INTEGER NOT NULL,
+        previous_quantity INTEGER,
         reason VARCHAR(200),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    // The DO block is atomic and skips ALTER TABLE once existing columns are widened.
+    await client.query(`
+      DO $
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = current_schema() AND data_type = 'smallint'
+            AND (table_name, column_name) IN (
+              ('inventory', 'quantity'), ('inventory', 'min_stock_level'),
+              ('inventory_history', 'product_id'), ('inventory_history', 'quantity'),
+              ('inventory_history', 'previous_quantity')
+            )
+        ) THEN
+          ALTER TABLE inventory
+            ALTER COLUMN quantity TYPE INTEGER,
+            ALTER COLUMN min_stock_level TYPE INTEGER;
+          ALTER TABLE inventory_history
+            ALTER COLUMN product_id TYPE INTEGER,
+            ALTER COLUMN quantity TYPE INTEGER,
+            ALTER COLUMN previous_quantity TYPE INTEGER;
+        END IF;
+      END $;
     `);
 
     await client.query(`CREATE INDEX IF NOT EXISTS idx_inventory_category ON inventory(category)`);
