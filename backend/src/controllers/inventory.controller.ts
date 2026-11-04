@@ -19,6 +19,10 @@ const SYNONYMS: { [key: string]: string[] } = {
   'product': ['item', 'goods', 'merchandise', 'article'],
 };
 
+// PostgreSQL LIKE uses backslash as its default escape, including LIKE ANY patterns.
+const containsPattern = (term: string) =>
+  '%' + term.replace(/[\\%_]/g, (character) => '\\' + character) + '%';
+
 function extractKeywords(filename: string): string[] {
   const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
   const words = nameWithoutExt.toLowerCase().split(/[_\-\s]+/);
@@ -117,7 +121,7 @@ export const searchInventory = async (
        LOWER(category) LIKE ANY($1) OR 
        LOWER(COALESCE(description, '')) LIKE ANY($1)
        ORDER BY name`,
-      [allTerms.map(t => `%${t}%`)]
+      [allTerms.map(containsPattern)]
     );
     
     res.json({
@@ -153,7 +157,7 @@ export const matchImage = async (
        LOWER(category) LIKE ANY($1) OR
        LOWER(COALESCE(description, '')) LIKE ANY($1)
       ) ORDER BY name LIMIT 10`,
-      [allTerms.map(t => `%${t}%`)]
+      [allTerms.map(containsPattern)]
     );
     
     res.json({
