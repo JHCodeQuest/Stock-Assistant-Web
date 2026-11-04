@@ -25,7 +25,7 @@ ChartJS.register(
 );
 
 const InventoryMetrics: React.FC = () => {
-  const { data: inventory, isLoading, error } = useQuery({
+  const { data: inventory, isLoading, error, refetch } = useQuery({
     queryKey: ['inventory'],
     queryFn: async () => {
       const response = await getInventory();
@@ -95,8 +95,9 @@ const InventoryMetrics: React.FC = () => {
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg shadow p-8 text-center text-red-500">
-        Failed to load metrics. Please refresh.
+      <div role="alert" className="bg-white rounded-lg shadow p-8 text-center text-red-500">
+        <p>Failed to load metrics.</p>
+        <button type="button" onClick={() => refetch()} className="text-blue-600 underline">Retry metrics</button>
       </div>
     );
   }
