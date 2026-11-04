@@ -30,7 +30,7 @@ export const registerBody = Joi.object({
 
 export const loginBody = Joi.object({ email, password });
 
-const stockCount = Joi.number().integer().min(0).max(32767).strict();
+const stockCount = Joi.number().integer().min(0).max(2147483647).strict();
 const optionalText = (max: number) => Joi.string().trim().max(max).allow('');
 
 export const inventoryBody = Joi.object({

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { app } from '../src/app';
+import { initDatabase } from '../src/config/database';
 import { pool, useTestDatabase } from './helpers/db';
 import { addItem, addSampleItems, sampleItems, inventoryAuthorization } from './helpers/fixtures';
 
@@ -65,7 +66,7 @@ describe('POST /api/inventory/add', () => {
     { name: undefined }, { name: '   ' }, { name: {} }, { name: 'a'.repeat(151) },
     { sku: undefined }, { sku: 'x'.repeat(31) },
     { quantity: undefined }, { quantity: -1 }, { quantity: 1.5 },
-    { quantity: '5' }, { quantity: 32768 },
+    { quantity: '5' }, { quantity: 2147483648 },
     { min_stock_level: -1 }, { min_stock_level: '10' },
     { unit_price: -1 }, { unit_price: 1.234 }, { unit_price: '5' },
     { category: 'x'.repeat(51) }, { location: 'x'.repeat(16) },
@@ -174,7 +175,7 @@ describe('POST /api/inventory/adjust', () => {
     { productId: undefined }, { productId: {} }, { productId: -1 },
     { adjustmentType: 'multiply' }, { adjustmentType: undefined },
     { quantity: undefined }, { quantity: -1 }, { quantity: 1.5 },
-    { quantity: '5' }, { quantity: 0 }, { quantity: 32768 },
+    { quantity: '5' }, { quantity: 0 }, { quantity: 2147483648 },
     { reason: {} }, { reason: 'x'.repeat(201) },
   ])('rejects invalid adjustments without changing stock or history: %j', async (invalid) => {
     const item = await addItem(sampleItems[1]);
@@ -285,5 +286,79 @@ describe('image-match validation', () => {
       .set('Authorization', inventoryAuthorization()).send({ filename });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Invalid request body');
+  });
+});
+
+describe('INTEGER stock quantities and product IDs', () => {
+  it('creates and adjusts an item above the SMALLINT limits and reads its history', async () => {
+    await pool.query("SELECT setval(pg_get_serial_sequence('inventory', 'id'), 40000, false)");
+    const item = await addItem({ ...sampleItems[0], quantity: 100000, min_stock_level: 50000 });
+    expect(item.id).toBe(40000);
+    expect(item.quantity).toBe(100000);
+
+    const adjusted = await request(app).post('/api/inventory/adjust')
+      .set('Authorization', inventoryAuthorization())
+      .send({ productId: item.id, adjustmentType: 'add', quantity: 50000 });
+    expect(adjusted.status).toBe(200);
+    expect(adjusted.body).toMatchObject({ previousQuantity: 100000, newQuantity: 150000 });
+    const history = await request(app).get('/api/inventory/history/' + item.id)
+      .set('Authorization', inventoryAuthorization());
+    expect(history.status).toBe(200);
+    expect(history.body).toEqual([expect.objectContaining({
+      product_id: 40000, quantity: 50000, previous_quantity: 100000,
+    })]);
+  });
+
+  it('accepts the maximum INTEGER stock count and minimum-stock threshold', async () => {
+    const item = await addItem({ ...sampleItems[0], quantity: 2147483647, min_stock_level: 2147483647 });
+    expect(item.quantity).toBe(2147483647);
+    expect(item.min_stock_level).toBe(2147483647);
+  });
+});
+
+describe('legacy SMALLINT migration', () => {
+  it('preserves rows, defaults and foreign keys through repeated initialization', async () => {
+    await pool.query(`
+      ALTER TABLE inventory ALTER COLUMN quantity TYPE SMALLINT, ALTER COLUMN min_stock_level TYPE SMALLINT;
+      ALTER TABLE inventory_history ALTER COLUMN product_id TYPE SMALLINT,
+        ALTER COLUMN quantity TYPE SMALLINT, ALTER COLUMN previous_quantity TYPE SMALLINT;
+      INSERT INTO inventory (id, name, sku, quantity, min_stock_level)
+        VALUES (17, 'Legacy Item', 'LEGACY-001', 30000, 100);
+      INSERT INTO inventory_history (product_id, adjustment_type, quantity, previous_quantity, reason)
+        VALUES (17, 'add', 10000, 20000, 'Legacy delivery');
+      INSERT INTO inventory_history (product_id, adjustment_type, quantity, previous_quantity)
+        VALUES (17, 'set', 30000, NULL);
+    `);
+    const beforeItems = await pool.query('SELECT * FROM inventory ORDER BY id');
+    const beforeHistory = await pool.query('SELECT * FROM inventory_history ORDER BY id');
+    await initDatabase();
+    await initDatabase();
+    const types = await pool.query(`
+      SELECT data_type FROM information_schema.columns
+      WHERE table_schema = current_schema() AND (table_name, column_name) IN (
+        ('inventory', 'quantity'), ('inventory', 'min_stock_level'),
+        ('inventory_history', 'product_id'), ('inventory_history', 'quantity'),
+        ('inventory_history', 'previous_quantity')
+      )
+    `);
+    expect(types.rows).toHaveLength(5);
+    expect(types.rows.every((column) => column.data_type === 'integer')).toBe(true);
+    expect((await pool.query('SELECT * FROM inventory ORDER BY id')).rows).toEqual(beforeItems.rows);
+    expect((await pool.query('SELECT * FROM inventory_history ORDER BY id')).rows).toEqual(beforeHistory.rows);
+    const defaults = await pool.query(
+      "INSERT INTO inventory (name, sku) VALUES ('Default Item', 'DEFAULT-001') RETURNING quantity, min_stock_level"
+    );
+    expect(defaults.rows[0]).toEqual({ quantity: 0, min_stock_level: 10 });
+    await pool.query(`
+      INSERT INTO inventory (id, name, sku, quantity, min_stock_level)
+        VALUES (40000, 'Large Item', 'LARGE-001', 150000, 50000);
+      INSERT INTO inventory_history (product_id, adjustment_type, quantity, previous_quantity)
+        VALUES (40000, 'add', 50000, 100000);
+    `);
+    await expect(pool.query(`
+      INSERT INTO inventory_history (product_id, adjustment_type, quantity) VALUES (99999, 'add', 1)
+    `)).rejects.toMatchObject({ code: '23503' });
+    await pool.query('DELETE FROM inventory WHERE id = 40000');
+    expect((await pool.query('SELECT COUNT(*)::int AS count FROM inventory_history WHERE product_id = 40000')).rows[0].count).toBe(0);
   });
 });
