@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { addInventory as addInventoryApi } from '../../services/api';
+import { addInventory as addInventoryApi, uploadImage } from '../../services/api';
 import { Spinner } from '../common/Loading';
 import toast from 'react-hot-toast';
 
@@ -179,18 +179,7 @@ const AddInventoryForm: React.FC = () => {
       let finalImageUrl = imageUrl;
       
       if (imageFile) {
-        const formData = new FormData();
-        formData.append('image', imageFile);
-        
-        const uploadResponse = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (uploadResponse.ok) {
-          const uploadData = await uploadResponse.json();
-          finalImageUrl = uploadData.url;
-        }
+        finalImageUrl = await uploadImage(imageFile);
       }
       
       await addInventoryApi({
@@ -346,10 +335,15 @@ const AddInventoryForm: React.FC = () => {
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/png,image/jpeg,image/webp"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
+                      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+                        toast.error('Choose a PNG, JPEG or WebP image up to 5 MB.');
+                        e.target.value = '';
+                        return;
+                      }
                       setImageFile(file);
                       setImageUrl(`/uploads/images/${file.name}`);
                       analyzeImage(file);
@@ -363,7 +357,7 @@ const AddInventoryForm: React.FC = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                   <span className="text-gray-500">Click to upload or drag and drop</span>
-                  <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 10MB</p>
+                  <p className="text-xs text-gray-400 mt-1">PNG, JPEG or WebP up to 5 MB</p>
                 </label>
               </div>
               {imageFile && (

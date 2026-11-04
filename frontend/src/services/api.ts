@@ -42,6 +42,15 @@ export const updateProduct = (id: string, productData: any) =>
   api.put(`/products/${id}`, productData);
 export const deleteProduct = (id: string) => api.delete(`/products/${id}`);
 
+export const uploadImage = async (file: File) => {
+  const formData = new FormData();
+  formData.append('image', file);
+  const response = await api.post('/upload', formData, {
+    headers: { 'Content-Type': undefined },
+  });
+  return new URL(response.data.url, new URL(API_URL, window.location.origin)).href;
+};
+
 // Inventory endpoints
 export const getInventory = () => api.get('/inventory');
 export const searchInventory = (query: string) => api.get(`/inventory/search?query=${encodeURIComponent(query)}`);
