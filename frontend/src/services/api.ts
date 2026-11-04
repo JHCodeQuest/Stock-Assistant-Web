@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { clearSession } from './session';
 
-const API_URL = process.env.REACT_APP_API_URL || 'https://stock-assistant-api-3x6i.onrender.com/api';
+import { API_URL, resolveImageUrl } from './urls';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -48,7 +48,7 @@ export const uploadImage = async (file: File) => {
   const response = await api.post('/upload', formData, {
     headers: { 'Content-Type': undefined },
   });
-  return new URL(response.data.url, new URL(API_URL, window.location.origin)).href;
+  return resolveImageUrl(response.data.url);
 };
 
 // Inventory endpoints
