@@ -84,13 +84,8 @@ app.get('/api/dashboard/metrics', async (req: Request, res: Response) => {
       recentTransactions: 0
     });
   } catch (error) {
-    res.json({
-      totalProducts: 0,
-      lowStockItems: 0,
-      outOfStockItems: 0,
-      totalValue: 0,
-      recentTransactions: 0
-    });
+    console.error('Error fetching dashboard metrics:', error);
+    res.status(500).json({ error: 'Failed to fetch inventory metrics' });
   }
 });
 
