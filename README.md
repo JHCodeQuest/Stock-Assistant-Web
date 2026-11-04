@@ -32,8 +32,7 @@ table to load changes made elsewhere. Stock changes are not broadcast between cl
 - **Multer** - File uploads
 
 ### Data
-- **In-memory storage** (default) - No database setup required
-- **PostgreSQL** - Optional database for production
+- **PostgreSQL** - Required; tables and migrations initialize automatically
 
 ## Project Structure
 
@@ -42,7 +41,7 @@ AIStockAssistant/
 ├── backend/
 │   ├── src/
 │   │   ├── config/
-│   │   │   └── database.ts       # Database connection
+│   │   │   └── database.ts       # Database connection, schema and migrations
 │   │   ├── controllers/
 │   │   │   ├── auth.controllers.ts   # Login/register logic
 │   │   │   └── inventory.controller.ts  # Inventory CRUD + AI matching
@@ -69,7 +68,6 @@ AIStockAssistant/
 │   │   ├── index.tsx            # React entry point
 │   │   └── index.css            # Tailwind styles
 │   └── package.json
-├── database/                     # Database schemas (optional)
 ├── run.sh                        # Start both services
 └── README.md
 ```
@@ -79,6 +77,12 @@ AIStockAssistant/
 ### Prerequisites
 - Node.js 18+
 - npm
+
+### Database setup
+
+Set `DATABASE_URL` in the backend environment to your PostgreSQL connection string. On startup,
+`backend/src/config/database.ts` creates missing tables and applies the application's migrations.
+No separate SQL setup script is required. See [DEPLOY.md](./DEPLOY.md) for hosted database setup.
 
 ### Installation
 
