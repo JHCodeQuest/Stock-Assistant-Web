@@ -320,11 +320,17 @@ describe('inventory image URLs', () => {
   test('image-search thumbnails and selected previews use the API origin', async () => {
     signIn();
     mockGetInventory.mockResolvedValue({ data: [item] });
-    // Filename matching still works when the model is unavailable.
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-    jest.spyOn(require('@tensorflow-models/mobilenet'), 'load').mockRejectedValue(new Error('offline'));
+    // jsdom does not load image pixels. Simulate the browser load event while
+    // the shared test model returns no labels, exercising filename matching.
+    jest.spyOn(window, 'Image').mockImplementation(() => {
+      const image = document.createElement('img');
+      Object.defineProperty(image, 'src', {
+        set: () => Promise.resolve().then(() => image.dispatchEvent(new Event('load'))),
+      });
+      return image;
+    });
     const { user } = renderApp('/image-search');
-    await waitFor(() => expect(screen.queryByText(/Loading AI model/)).not.toBeInTheDocument());
+    expect(await screen.findByText(/AI model ready/)).toBeInTheDocument();
     await waitFor(() => expect(mockGetInventory).toHaveBeenCalled());
     await user.upload(screen.getByLabelText(/Click or drag to upload/),
       new File(['photo'], 'bolt.png', { type: 'image/png' }));
