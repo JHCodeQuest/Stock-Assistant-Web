@@ -68,31 +68,27 @@ The API now stays up without a database, retries in the background, and reports 
 
 ## Frontend GitHub Pages Setup
 
-1. Go to your repo: `https://github.com/JHCodeQuest/Stock-Assistant-Web`
+1. In the repository, open **Settings → Pages**.
+2. Set **Build and deployment → Source** to **GitHub Actions**.
+3. The **Frontend Pages** workflow builds `frontend/` on pull requests and deploys
+   `frontend/build` after frontend changes merge to `main`. It can also run manually.
+   The old checked-in `docs/` bundle is not the deployment source.
+4. Open `https://jhcodequest.github.io/Stock-Assistant-Web/#/login`.
 
-2. Go to **Settings** → **Pages**
+Routes use the URL fragment so GitHub Pages always serves the repository's index document.
+For example, inventory is `/Stock-Assistant-Web/#/inventory`; refreshing it sends only
+`/Stock-Assistant-Web/` to the server. Use the app's navigation links and hash-form bookmarks.
+Signed-out protected links redirect to `#/login`.
 
-3. Configure:
-   - **Source**: Deploy from a branch
-   - **Branch**: `main` / `/ (root)`
-   - Click **Save**
-
-4. Wait 2-3 minutes for deployment
-
-5. Your site will be at: `https://JHCodeQuest.github.io/Stock-Assistant-Web`
-
----
+After deployment, check login and registration, then sign in and visit each inventory page.
+Refresh `#/inventory` and confirm the page still renders.
 
 ## Update Frontend API URL
 
-1. Go to your GitHub repo → `frontend/src/services/api.ts`
-
-2. Change line 3 to your Render URL:
-   ```typescript
-   const API_URL = process.env.REACT_APP_API_URL || 'https://stock-assistant-api.onrender.com/api';
-   ```
-
-3. Commit and push - GitHub Pages will auto-rebuild
+Set the repository **Settings → Secrets and variables → Actions → Variables**
+entry `REACT_APP_API_URL` to the backend URL including `/api`, for example
+`https://stock-assistant-api-3x6i.onrender.com/api`. It is public build configuration.
+Run **Frontend Pages** again after changing it. If unset, the source's default API URL is used.
 
 ---
 

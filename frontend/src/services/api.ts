@@ -52,6 +52,7 @@ export const addInventory = (item: {
   sku: string;
   quantity: number;
   min_stock_level?: number;
+  unit_price?: number;
   category?: string;
   location?: string;
   image_url?: string;
