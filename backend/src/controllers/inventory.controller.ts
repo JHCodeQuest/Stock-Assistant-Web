@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import type { PoolClient } from 'pg';
 import { AuthRequest } from '../middleware/auth';
 import pool from '../config/database';
 
@@ -175,51 +176,63 @@ export const updateStock = async (
   req: AuthRequest,
   res: Response
 ): Promise<void> => {
+  let client: PoolClient | undefined;
   try {
+    client = await pool.connect();
+    await client.query('BEGIN');
     const { productId, adjustmentType, quantity, reason } = req.body;
-    const userId = req.userId;
-
-    const itemResult = await pool.query('SELECT quantity FROM inventory WHERE id = $1', [productId]);
-    if (itemResult.rows.length === 0) {
-      res.status(404).json({ error: 'Product not found' });
+    // Lock before reading the old quantity, so concurrent adjustments see the latest committed stock.
+    // BIGINT arithmetic allows the bounds check to reject overflow before casting to INTEGER.
+    const result = await client.query(
+      `WITH current_stock AS (
+         SELECT id, quantity FROM inventory WHERE id = $1 FOR UPDATE
+       ), adjusted AS (
+         SELECT id, quantity AS previous_quantity,
+           CASE $2::text
+             WHEN 'add' THEN quantity::bigint + $3::bigint
+             WHEN 'remove' THEN quantity::bigint - $3::bigint
+             WHEN 'set' THEN $3::bigint
+           END AS new_quantity
+         FROM current_stock
+       )
+       UPDATE inventory AS item
+       SET quantity = adjusted.new_quantity::integer, updated_at = CURRENT_TIMESTAMP
+       FROM adjusted
+       WHERE item.id = adjusted.id AND adjusted.new_quantity BETWEEN 0 AND 2147483647
+       RETURNING adjusted.previous_quantity, item.quantity AS new_quantity`,
+      [productId, adjustmentType, quantity]
+    );
+    if (!result.rows.length) {
+      const exists = await client.query('SELECT 1 FROM inventory WHERE id = $1', [productId]);
+      await client.query('ROLLBACK');
+      res.status(exists.rows.length ? 409 : 404).json({
+        error: exists.rows.length ? 'Adjustment would put stock outside the allowed range.' : 'Product not found',
+      });
       return;
     }
-    
-    const previousQuantity = itemResult.rows[0].quantity;
-    let newQuantity = previousQuantity;
-    
-    switch (adjustmentType) {
-      case 'add':
-        newQuantity = previousQuantity + quantity;
-        break;
-      case 'remove':
-        newQuantity = previousQuantity - quantity;
-        break;
-      case 'set':
-        newQuantity = quantity;
-        break;
-    }
-
-    await pool.query('BEGIN');
-    
-    await pool.query(
-      'UPDATE inventory SET quantity = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [newQuantity, productId]
+    const { previous_quantity: previousQuantity, new_quantity: newQuantity } = result.rows[0];
+    await client.query(
+      `INSERT INTO inventory_history
+         (product_id, user_id, adjustment_type, quantity, previous_quantity, reason)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [productId, req.userId, adjustmentType, quantity, previousQuantity, reason]
     );
-    
-    await pool.query(
-      `INSERT INTO inventory_history (product_id, adjustment_type, quantity, previous_quantity, reason)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [productId, adjustmentType, quantity, previousQuantity, reason]
-    );
-    
-    await pool.query('COMMIT');
-    
+    await client.query('COMMIT');
     res.json({ success: true, newQuantity, previousQuantity });
   } catch (error) {
-    await pool.query('ROLLBACK');
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // A failed rollback means the connection must not return to the pool.
+        client.release(true);
+        client = undefined;
+      }
+    }
     console.error('Error updating stock:', error);
     res.status(500).json({ error: 'Failed to update stock' });
+  } finally {
+    client?.release();
   }
 };
 
@@ -247,7 +260,7 @@ export const getInventoryHistory = async (
     const result = await pool.query(
       `SELECT ih.*, u.name as user_name
        FROM inventory_history ih
-       LEFT JOIN users u ON ih.previous_quantity = u.id
+       LEFT JOIN users u ON ih.user_id = u.id
        WHERE ih.product_id = $1
        ORDER BY ih.created_at DESC`,
       [productId]
