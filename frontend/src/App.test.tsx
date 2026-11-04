@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { HashRouter, MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { login, register, getInventory } from './services/api';
@@ -291,7 +291,6 @@ describe('protected routes', () => {
     expect(screen.getByRole('main')).toBeEmptyDOMElement();
   });
 
-  test.todo('#1 serves routes under the GitHub Pages basename');
 });
 
 describe('inventory image URLs', () => {
@@ -389,5 +388,57 @@ describe('inventory outages', () => {
     await act(async () => { await queryClient.refetchQueries(['inventory']); });
     expect(await screen.findByRole('alert')).toHaveTextContent('Failed to load metrics.');
     expect(screen.queryByText('Total Products')).not.toBeInTheDocument();
+  });
+});
+
+function renderPagesApp() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+    logger: { log: () => {}, warn: () => {}, error: () => {} },
+  });
+  return render(<QueryClientProvider client={client}><HashRouter><App /></HashRouter></QueryClientProvider>);
+}
+
+describe('GitHub Pages hash routing', () => {
+  afterEach(() => window.history.replaceState({}, '', '/'));
+
+  test.each(protectedRoutes)('%s renders at the Pages subpath and survives a fresh mount', async (route, heading) => {
+    signIn();
+    window.history.replaceState({}, '', '/Stock-Assistant-Web/#' + route);
+    const first = renderPagesApp();
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+    if (route === '/image-search') expect(await screen.findByText(/AI model ready/)).toBeInTheDocument();
+    first.unmount();
+    renderPagesApp();
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+    if (route === '/image-search') expect(await screen.findByText(/AI model ready/)).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/Stock-Assistant-Web/');
+    expect(window.location.hash).toBe('#' + route);
+  });
+
+  test.each([['/login', 'Login'], ['/register', 'Register']])('%s is public under the Pages path', async (route, heading) => {
+    window.history.replaceState({}, '', '/Stock-Assistant-Web/#' + route);
+    renderPagesApp();
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+  });
+
+  test('signed-out deep links redirect within the hash while keeping the served Pages path', async () => {
+    window.history.replaceState({}, '', '/Stock-Assistant-Web/#/inventory');
+    renderPagesApp();
+    expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/Stock-Assistant-Web/');
+    expect(window.location.hash).toBe('#/login');
+  });
+
+  test('navigation links keep the repository path and change only the hash', async () => {
+    signIn();
+    window.history.replaceState({}, '', '/Stock-Assistant-Web/#/');
+    renderPagesApp();
+    const link = within(nav()).getByRole('link', { name: 'Inventory' });
+    expect(link).toHaveAttribute('href', '#/inventory');
+    await userEvent.setup().click(link);
+    expect(await screen.findByRole('heading', { name: 'Inventory' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/Stock-Assistant-Web/');
+    expect(window.location.hash).toBe('#/inventory');
   });
 });
