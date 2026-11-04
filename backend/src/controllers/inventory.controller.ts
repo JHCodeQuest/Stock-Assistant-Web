@@ -85,7 +85,7 @@ export const addInventory = async (
     const result = await pool.query(
       `INSERT INTO inventory (name, sku, quantity, min_stock_level, unit_price, category, location, image_url, description)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [name, sku, quantity, min_stock_level || 10, unit_price || 0, category || 'General', location, image_url, description]
+      [name, sku, quantity, min_stock_level ?? 10, unit_price ?? 0, category || 'General', location, image_url, description]
     );
     
     res.status(201).json(result.rows[0]);

@@ -61,7 +61,33 @@ describe('POST /api/inventory/add', () => {
     expect(res.body).toMatchObject({ min_stock_level: 10, unit_price: '0.00', category: 'General' });
   });
 
-  it.todo('#11 (details in the private task)');
+  it.each([
+    { name: undefined }, { name: '   ' }, { name: {} }, { name: 'a'.repeat(151) },
+    { sku: undefined }, { sku: 'x'.repeat(31) },
+    { quantity: undefined }, { quantity: -1 }, { quantity: 1.5 },
+    { quantity: '5' }, { quantity: 32768 },
+    { min_stock_level: -1 }, { min_stock_level: '10' },
+    { unit_price: -1 }, { unit_price: 1.234 }, { unit_price: '5' },
+    { category: 'x'.repeat(51) }, { location: 'x'.repeat(16) },
+    { description: 'x'.repeat(501) }, { image_url: 'javascript:alert(1)' },
+    { image_url: { url: 'https://example.com/image.jpg' } },
+  ])('rejects invalid inventory input without creating stock: %j', async (invalid) => {
+    const res = await request(app).post('/api/inventory/add')
+      .set('Authorization', inventoryAuthorization()).send({ ...sampleItems[0], ...invalid });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid request body');
+    const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM inventory');
+    expect(rows[0].count).toBe(0);
+  });
+
+  it('preserves zero values and accepts empty optional form fields', async () => {
+    const res = await request(app).post('/api/inventory/add')
+      .set('Authorization', inventoryAuthorization())
+      .send({ ...sampleItems[0], quantity: 0, min_stock_level: 0, unit_price: 0,
+        location: '', description: '', image_url: '' });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ quantity: 0, min_stock_level: 0, unit_price: '0.00' });
+  });
 });
 
 describe('GET /api/inventory', () => {
@@ -144,8 +170,29 @@ describe('POST /api/inventory/adjust', () => {
     expect(history.rows[0].count).toBe(0);
   });
 
-  it.todo('#13 adjust rejects an unknown adjustmentType');
-  it.todo('#13 adjust rejects a quantity that is not a positive integer (a string "5" is concatenated today)');
+  it.each([
+    { productId: undefined }, { productId: {} }, { productId: -1 },
+    { adjustmentType: 'multiply' }, { adjustmentType: undefined },
+    { quantity: undefined }, { quantity: -1 }, { quantity: 1.5 },
+    { quantity: '5' }, { quantity: 0 }, { quantity: 32768 },
+    { reason: {} }, { reason: 'x'.repeat(201) },
+  ])('rejects invalid adjustments without changing stock or history: %j', async (invalid) => {
+    const item = await addItem(sampleItems[1]);
+    const res = await adjust({ productId: item.id, adjustmentType: 'add', quantity: 1, ...invalid });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid request body');
+    const stored = await pool.query('SELECT quantity FROM inventory WHERE id = $1', [item.id]);
+    expect(stored.rows[0].quantity).toBe(20);
+    const history = await pool.query('SELECT COUNT(*)::int AS count FROM inventory_history');
+    expect(history.rows[0].count).toBe(0);
+  });
+
+  it('accepts numeric product IDs from form controls and setting stock to zero', async () => {
+    const item = await addItem(sampleItems[1]);
+    const res = await adjust({ productId: String(item.id), adjustmentType: 'set', quantity: 0 });
+    expect(res.status).toBe(200);
+    expect(res.body.newQuantity).toBe(0);
+  });
   it.todo('#13 remove cannot take stock below zero');
   it.todo('#13 the stock update and its history row are written in one transaction');
   it.todo('#13 concurrent adjustments to the same item do not lose updates');
@@ -216,7 +263,7 @@ describe('POST /api/inventory/match-image', () => {
     const res = await request(app).post('/api/inventory/match-image').set('Authorization', inventoryAuthorization()).send({});
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: 'No filename provided' });
+    expect(res.body.error).toBe('Invalid request body');
   });
 
   it('matches items that have an image using keywords from the filename', async () => {
@@ -229,5 +276,14 @@ describe('POST /api/inventory/match-image', () => {
     expect(res.body.keywordsFound).toEqual(['hex', 'bolt']);
     expect(res.body.matches.map((item: { sku: string }) => item.sku)).toEqual(['TST-BLT-001']);
     expect(res.body.totalMatches).toBe(1);
+  });
+});
+
+describe('image-match validation', () => {
+  it.each([42, [], {}, '', ' ', 'x'.repeat(256)])('rejects invalid filenames: %j', async (filename) => {
+    const res = await request(app).post('/api/inventory/match-image')
+      .set('Authorization', inventoryAuthorization()).send({ filename });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid request body');
   });
 });

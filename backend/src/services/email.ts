@@ -1,5 +1,9 @@
 import { Resend } from 'resend';
 
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (character) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[character]!));
+
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 export const sendWelcomeEmail = async (email: string, name: string) => {
@@ -14,7 +18,7 @@ export const sendWelcomeEmail = async (email: string, name: string) => {
       to: email,
       subject: 'Welcome to AI Stock Assistant!',
       html: `
-        <h1>Welcome, ${name}!</h1>
+        <h1>Welcome, ${escapeHtml(name)}!</h1>
         <p>Thank you for joining AI Stock Assistant.</p>
         <p>You can now:</p>
         <ul>
