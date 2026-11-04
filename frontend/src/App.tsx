@@ -375,6 +375,7 @@ const Login: React.FC = () => {
 
 const Register: React.FC = () => {
   const [name, setName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -385,7 +386,7 @@ const Register: React.FC = () => {
     setError('');
     
     try {
-      const response = await registerApi({ name, email, password });
+      const response = await registerApi({ name, email, password, inviteCode });
       saveSession(response.data.token, response.data.user);
       navigate('/');
     } catch (err: any) {
@@ -398,7 +399,22 @@ const Register: React.FC = () => {
       <div className="bg-white p-8 rounded-lg shadow-md w-96">
         <h2 className="text-2xl font-bold mb-6 text-center">Register</h2>
         {error && <div className="mb-4 text-red-500 text-center">{error}</div>}
+        <p className="mb-4 text-sm text-gray-600">An invitation from the demo owner is required.</p>
         <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label htmlFor="invite-code" className="block text-gray-700 text-sm font-bold mb-2">
+              Invite code
+            </label>
+            <input
+              id="invite-code"
+              type="password"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg"
+              autoComplete="off"
+              required
+            />
+          </div>
           <div className="mb-4">
             <label className="block text-gray-700 text-sm font-bold mb-2">
               Name
