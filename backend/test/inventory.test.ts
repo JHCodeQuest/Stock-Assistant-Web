@@ -1,14 +1,50 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import { app } from '../src/app';
 import { pool, useTestDatabase } from './helpers/db';
-import { addItem, addSampleItems, sampleItems } from './helpers/fixtures';
+import { addItem, addSampleItems, sampleItems, inventoryAuthorization } from './helpers/fixtures';
 
 useTestDatabase();
 
+describe('inventory authentication', () => {
+  const routes = [
+    ['post', '/api/inventory/add'],
+    ['get', '/api/inventory'],
+    ['get', '/api/inventory/search'],
+    ['post', '/api/inventory/match-image'],
+    ['post', '/api/inventory/adjust'],
+    ['get', '/api/inventory/low-stock'],
+    ['get', '/api/inventory/history/1'],
+  ] as const;
+
+  it.each(routes)('%s %s rejects a missing token', async (method, path) => {
+    const res = await request(app)[method](path).send({});
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'No token provided' });
+    const result = await pool.query('SELECT COUNT(*)::int AS count FROM inventory');
+    expect(result.rows[0].count).toBe(0);
+  });
+
+  it.each(routes)('%s %s rejects an invalid token', async (method, path) => {
+    const res = await request(app)[method](path)
+      .set('Authorization', 'Bearer invalid-token').send({});
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Invalid token' });
+  });
+
+  it.each(routes)('%s %s rejects an expired token', async (method, path) => {
+    const token = jwt.sign({ id: 42 }, process.env.JWT_SECRET!, { expiresIn: -60 });
+    const res = await request(app)[method](path)
+      .set('Authorization', `Bearer ${token}`).send({});
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Invalid token' });
+  });
+});
+
 describe('POST /api/inventory/add', () => {
   it('creates an item and returns the stored row', async () => {
-    const res = await request(app).post('/api/inventory/add').send(sampleItems[0]);
+    const res = await request(app).post('/api/inventory/add').set('Authorization', inventoryAuthorization()).send(sampleItems[0]);
 
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ ...sampleItems[0], id: expect.any(Number) });
@@ -18,7 +54,7 @@ describe('POST /api/inventory/add', () => {
 
   it('fills in defaults for optional fields', async () => {
     const res = await request(app)
-      .post('/api/inventory/add')
+      .post('/api/inventory/add').set('Authorization', inventoryAuthorization())
       .send({ name: 'Wing Nut M6', sku: 'TST-NUT-001', quantity: 40 });
 
     expect(res.status).toBe(201);
@@ -32,14 +68,14 @@ describe('GET /api/inventory', () => {
   it('lists every item, newest first', async () => {
     await addSampleItems();
 
-    const res = await request(app).get('/api/inventory');
+    const res = await request(app).get('/api/inventory').set('Authorization', inventoryAuthorization());
 
     expect(res.status).toBe(200);
     expect(res.body.map((item: { sku: string }) => item.sku)).toEqual(['TST-PIP-001', 'TST-GAS-001', 'TST-BLT-001']);
   });
 
   it('returns an empty list when there is no stock', async () => {
-    const res = await request(app).get('/api/inventory');
+    const res = await request(app).get('/api/inventory').set('Authorization', inventoryAuthorization());
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
@@ -50,7 +86,7 @@ describe('GET /api/inventory/low-stock', () => {
   it('returns items at or below their minimum, lowest quantity first', async () => {
     await addSampleItems();
 
-    const res = await request(app).get('/api/inventory/low-stock');
+    const res = await request(app).get('/api/inventory/low-stock').set('Authorization', inventoryAuthorization());
 
     expect(res.status).toBe(200);
     expect(res.body.map((item: { sku: string }) => item.sku)).toEqual(['TST-PIP-001', 'TST-GAS-001']);
@@ -58,7 +94,7 @@ describe('GET /api/inventory/low-stock', () => {
 });
 
 describe('POST /api/inventory/adjust', () => {
-  const adjust = (body: object) => request(app).post('/api/inventory/adjust').send(body);
+  const adjust = (body: object) => request(app).post('/api/inventory/adjust').set('Authorization', inventoryAuthorization()).send(body);
 
   it('adds stock and writes a history row', async () => {
     const item = await addItem(sampleItems[1]);
@@ -108,7 +144,6 @@ describe('POST /api/inventory/adjust', () => {
     expect(history.rows[0].count).toBe(0);
   });
 
-  it.todo('#7 (details in the private task)');
   it.todo('#13 adjust rejects an unknown adjustmentType');
   it.todo('#13 adjust rejects a quantity that is not a positive integer (a string "5" is concatenated today)');
   it.todo('#13 remove cannot take stock below zero');
@@ -119,11 +154,11 @@ describe('POST /api/inventory/adjust', () => {
 describe('GET /api/inventory/history/:productId', () => {
   it("returns that product's adjustments", async () => {
     const [bolt, gasket] = await addSampleItems();
-    await request(app).post('/api/inventory/adjust').send({ productId: bolt.id, adjustmentType: 'add', quantity: 10, reason: 'Restock' });
-    await request(app).post('/api/inventory/adjust').send({ productId: bolt.id, adjustmentType: 'remove', quantity: 5, reason: 'Damaged' });
-    await request(app).post('/api/inventory/adjust').send({ productId: gasket.id, adjustmentType: 'add', quantity: 1 });
+    await request(app).post('/api/inventory/adjust').set('Authorization', inventoryAuthorization()).send({ productId: bolt.id, adjustmentType: 'add', quantity: 10, reason: 'Restock' });
+    await request(app).post('/api/inventory/adjust').set('Authorization', inventoryAuthorization()).send({ productId: bolt.id, adjustmentType: 'remove', quantity: 5, reason: 'Damaged' });
+    await request(app).post('/api/inventory/adjust').set('Authorization', inventoryAuthorization()).send({ productId: gasket.id, adjustmentType: 'add', quantity: 1 });
 
-    const res = await request(app).get(`/api/inventory/history/${bolt.id}`);
+    const res = await request(app).get(`/api/inventory/history/${bolt.id}`).set('Authorization', inventoryAuthorization());
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
@@ -135,7 +170,7 @@ describe('GET /api/inventory/history/:productId', () => {
 });
 
 describe('GET /api/inventory/search', () => {
-  const search = (query?: string) => request(app).get('/api/inventory/search').query(query === undefined ? {} : { query });
+  const search = (query?: string) => request(app).get('/api/inventory/search').set('Authorization', inventoryAuthorization()).query(query === undefined ? {} : { query });
   const skus = (res: request.Response) => res.body.results.map((item: { sku: string }) => item.sku);
 
   it('asks for a search term when the query is empty', async () => {
@@ -178,7 +213,7 @@ describe('GET /api/inventory/search', () => {
 
 describe('POST /api/inventory/match-image', () => {
   it('requires a filename', async () => {
-    const res = await request(app).post('/api/inventory/match-image').send({});
+    const res = await request(app).post('/api/inventory/match-image').set('Authorization', inventoryAuthorization()).send({});
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'No filename provided' });
@@ -188,7 +223,7 @@ describe('POST /api/inventory/match-image', () => {
     await addItem({ ...sampleItems[0], image_url: '/uploads/images/test-bolt.jpg' });
     await addItem({ ...sampleItems[1], name: 'Bolt Seal Kit', sku: 'TST-SEAL-002' });
 
-    const res = await request(app).post('/api/inventory/match-image').send({ filename: 'IMG_hex-bolt.jpg' });
+    const res = await request(app).post('/api/inventory/match-image').set('Authorization', inventoryAuthorization()).send({ filename: 'IMG_hex-bolt.jpg' });
 
     expect(res.status).toBe(200);
     expect(res.body.keywordsFound).toEqual(['hex', 'bolt']);

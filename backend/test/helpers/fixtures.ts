@@ -1,7 +1,12 @@
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import { app } from '../../src/app';
 
 // Fictional data only: this is a public repo.
+
+export const inventoryAuthorization = () => `Bearer ${jwt.sign(
+  { id: 42, email: 'ada.tester@example.com' }, process.env.JWT_SECRET!, { expiresIn: '1h' }
+)}`;
 
 export const testUser = {
   email: 'ada.tester@example.com',
@@ -21,7 +26,7 @@ export const sampleItems = [
 ];
 
 export const addItem = async (item: Record<string, unknown>) => {
-  const res = await request(app).post('/api/inventory/add').send(item);
+  const res = await request(app).post('/api/inventory/add').set('Authorization', inventoryAuthorization()).send(item);
   if (res.status !== 201) throw new Error(`addItem failed: ${res.status} ${JSON.stringify(res.body)}`);
   return res.body as { id: number; quantity: number; [key: string]: unknown };
 };

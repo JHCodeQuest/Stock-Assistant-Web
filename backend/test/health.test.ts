@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
+import { inventoryAuthorization } from './helpers/fixtures';
 import { app } from '../src/app';
 import pool, { initDatabase } from '../src/config/database';
 
@@ -61,7 +62,7 @@ describe('once the database is ready', () => {
     expect(health.status).toBe(200);
     expect(health.body).toMatchObject({ status: 'OK', database: 'connected' });
 
-    const inventory = await request(app).get('/api/inventory');
+    const inventory = await request(app).get('/api/inventory').set('Authorization', inventoryAuthorization());
     expect(inventory.status).toBe(200);
   });
 
