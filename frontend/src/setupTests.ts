@@ -13,19 +13,6 @@ jest.mock('@tensorflow-models/mobilenet', () => ({
   load: () => Promise.resolve({ classify: () => Promise.resolve([]) }),
 }));
 
-jest.mock('socket.io-client', () => {
-  const socket = {
-    on: () => socket,
-    off: () => socket,
-    emit: () => socket,
-    connect: () => socket,
-    disconnect: () => socket,
-    connected: false,
-  };
-  const io = () => socket;
-  return { __esModule: true, io, default: io };
-});
-
 // Charts draw on <canvas>, which jsdom doesn't implement.
 jest.mock('chart.js', () => ({
   Chart: { register: () => {} },
