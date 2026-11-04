@@ -1,6 +1,7 @@
 import { resolveImageUrl } from '../../services/urls';
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import InventoryError from '../common/InventoryError';
 import { getInventory } from '../../services/api';
 import * as tf from '@tensorflow/tfjs';
 import * as mobilenet from '@tensorflow-models/mobilenet';
@@ -119,7 +120,7 @@ const ImageSearch: React.FC = () => {
   const modelRef = useRef<mobilenet.MobileNet | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   
-  const { data: inventory } = useQuery({
+  const { data: inventory, error: inventoryError, refetch: retryInventory } = useQuery({
     queryKey: ['inventory'],
     queryFn: async () => {
       const response = await getInventory();
@@ -249,6 +250,8 @@ const ImageSearch: React.FC = () => {
   const handleSelectItem = (item: any) => {
     setSelectedImage(resolveImageUrl(item.image_url));
   };
+
+  if (inventoryError) return <InventoryError onRetry={() => { retryInventory(); }} />;
 
   return (
     <div className="p-6">

@@ -3,8 +3,6 @@ import type { PoolClient } from 'pg';
 import { AuthRequest } from '../middleware/auth';
 import pool from '../config/database';
 
-const MOCK_INVENTORY: any[] = [];
-
 const SYNONYMS: { [key: string]: string[] } = {
   'bolt': ['screw', 'fastener', 'stud', 'rod', 'pole', 'pin', 'rivet'],
   'screw': ['bolt', 'fastener', 'rivet', 'nail'],
@@ -72,7 +70,7 @@ export const getInventory = async (
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching inventory:', error);
-    res.json(MOCK_INVENTORY);
+    res.status(500).json({ error: 'Failed to fetch inventory' });
   }
 };
 
@@ -247,7 +245,7 @@ export const getLowStockItems = async (
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching low stock items:', error);
-    res.json([]);
+    res.status(500).json({ error: 'Failed to fetch low stock items' });
   }
 };
 
@@ -268,6 +266,6 @@ export const getInventoryHistory = async (
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching inventory history:', error);
-    res.json([]);
+    res.status(500).json({ error: 'Failed to fetch inventory history' });
   }
 };
