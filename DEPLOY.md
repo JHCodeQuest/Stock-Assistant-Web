@@ -125,3 +125,30 @@ need a shared store.
 On Render (`RENDER=true`), Express trusts the nearest reverse proxy hop to identify each
 client. Direct local deployments do not trust forwarded headers. If hosting changes, confirm
 the proxy topology before changing this setting.
+
+## Permanent image storage (Cloudinary)
+
+Uploaded images in production are sent to Cloudinary's authenticated image Upload API.
+The returned HTTPS delivery URL is saved on the inventory item; the browser loads the image
+from Cloudinary without depending on the Render filesystem. See the
+[Cloudinary Upload API documentation](https://cloudinary.com/documentation/upload_images#authenticated_requests).
+
+1. Create/select a Cloudinary product environment and open its API keys settings.
+2. In Render's backend Environment settings, set `CLOUDINARY_CLOUD_NAME`,
+   `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET`.
+   Keep credentials out of the repository, chats, logs, and frontend build variables.
+3. Deploy the latest backend. No unsigned upload preset is needed.
+4. Log in and add an inventory item with a small PNG, JPEG, or WebP image.
+   Confirm `POST /api/upload` returns a URL beginning with
+   `https://res.cloudinary.com/<your-cloud>/image/upload/` and the saved item uses that URL.
+5. Redeploy/restart the Render service, reload the item, and confirm the same image URL still loads.
+   This live check is required before closing task #6.
+
+Uploads retain the 5 MB limit, image MIME/extension/signature validation, and login requirement.
+Production (`NODE_ENV=production` or `RENDER=true`) returns 503 when Cloudinary is missing or
+unavailable; it never falls back to Render's temporary disk. Local development without Cloudinary
+credentials can still use local files. If any Cloudinary setting is present, all three are required.
+
+Existing local image URLs are not migrated automatically. Re-upload surviving originals through
+the app to update their inventory records; files already wiped from Render cannot be recovered
+by this change. Configure Cloudinary before deploying this backend to keep new uploads available.

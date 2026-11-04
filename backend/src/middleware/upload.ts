@@ -3,6 +3,7 @@ import express from 'express';
 import { randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
+import { storeImage } from '../services/image-storage';
 import { authenticate } from './auth';
 
 const multer = require('multer');
@@ -57,9 +58,21 @@ export function createUploadRouter(directory = path.join(__dirname, '../../uploa
         res.status(415).json({ error: 'File contents do not match the image type.' });
         return;
       }
+      const filename = randomUUID() + type.extensions[0];
+      const permanentStorage = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true' ||
+        [process.env.CLOUDINARY_CLOUD_NAME, process.env.CLOUDINARY_API_KEY, process.env.CLOUDINARY_API_SECRET].some(Boolean);
+      if (permanentStorage) {
+        try {
+          const url = await storeImage(file.buffer, file.mimetype, filename);
+          res.json({ url });
+        } catch {
+          res.status(503).json({ error: 'Image storage is unavailable. Please try again later.' });
+        }
+        return;
+      }
+      // Local files are for development only. Production never falls back to ephemeral disk.
       try {
         await mkdir(directory, { recursive: true });
-        const filename = randomUUID() + type.extensions[0];
         await writeFile(path.join(directory, filename), file.buffer, { flag: 'wx' });
         res.json({ url: '/uploads/images/' + filename });
       } catch (error) {
