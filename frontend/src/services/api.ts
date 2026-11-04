@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearSession } from './session';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://stock-assistant-api-3x6i.onrender.com/api';
 
@@ -17,6 +18,14 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) clearSession();
+    return Promise.reject(error);
+  }
+);
 
 // Auth endpoints
 export const login = (credentials: { email: string; password: string }) =>
