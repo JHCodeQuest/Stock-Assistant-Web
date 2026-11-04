@@ -27,7 +27,7 @@ const StockTable: React.FC = () => {
   const itemsPerPage = 10;
   const [historyItem, setHistoryItem] = useState<{ id: string; name: string } | null>(null);
 
-  const inventory = data || [];
+  const inventory: any[] = data || [];
 
   const categories = useMemo(() => {
     const cats = new Set(inventory.map((item: any) => item.category).filter(Boolean));
