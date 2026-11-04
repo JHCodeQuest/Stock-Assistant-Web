@@ -122,6 +122,6 @@ const cleanupOldHistory = async (daysToKeep = 30) => {
     }
 };
 exports.cleanupOldHistory = cleanupOldHistory;
-setInterval(() => (0, exports.cleanupOldHistory)(30), 24 * 60 * 60 * 1000);
+setInterval(() => (0, exports.cleanupOldHistory)(30), 24 * 60 * 60 * 1000).unref();
 exports.default = pool;
 //# sourceMappingURL=database.js.map

@@ -128,6 +128,7 @@ export const cleanupOldHistory = async (daysToKeep: number = 30) => {
   }
 };
 
-setInterval(() => cleanupOldHistory(30), 24 * 60 * 60 * 1000);
+// unref: the open server keeps the process alive, so this timer alone shouldn't (it would hang tests).
+setInterval(() => cleanupOldHistory(30), 24 * 60 * 60 * 1000).unref();
 
 export default pool;
