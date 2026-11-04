@@ -28,6 +28,8 @@ export const checkOrigin = (origin: string | undefined, callback: (err: Error | 
 };
 
 const app = express();
+// Render terminates requests at its reverse proxy; trust only the nearest hop.
+app.set('trust proxy', process.env.RENDER === 'true' ? 1 : false);
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
