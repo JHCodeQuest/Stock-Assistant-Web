@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { app } from '../src/app';
@@ -7,6 +7,14 @@ import { pool, useTestDatabase } from './helpers/db';
 import { addItem, addSampleItems, sampleItems, inventoryAuthorization } from './helpers/fixtures';
 
 useTestDatabase();
+
+// Stock history now references the signed-in user. Each test gets a real author row.
+beforeEach(async () => {
+  await pool.query(
+    'INSERT INTO users (id, email, password_hash, name) VALUES ($1, $2, $3, $4)',
+    [42, 'ada.tester@example.com', 'unused-test-only-hash', 'Ada Tester']
+  );
+});
 
 describe('inventory authentication', () => {
   const routes = [
@@ -194,9 +202,72 @@ describe('POST /api/inventory/adjust', () => {
     expect(res.status).toBe(200);
     expect(res.body.newQuantity).toBe(0);
   });
-  it.todo('#13 remove cannot take stock below zero');
-  it.todo('#13 the stock update and its history row are written in one transaction');
-  it.todo('#13 concurrent adjustments to the same item do not lose updates');
+  it('rejects removal below zero without changing stock or history', async () => {
+    const item = await addItem(sampleItems[1]);
+    const res = await adjust({ productId: item.id, adjustmentType: 'remove', quantity: 21 });
+    expect(res.status).toBe(409);
+    expect((await pool.query('SELECT quantity FROM inventory WHERE id = $1', [item.id])).rows[0].quantity).toBe(20);
+    expect((await pool.query('SELECT COUNT(*)::int AS count FROM inventory_history')).rows[0].count).toBe(0);
+  });
+
+  it('rejects INTEGER overflow without changing stock or history', async () => {
+    const item = await addItem({ ...sampleItems[0], quantity: 2147483647 });
+    const res = await adjust({ productId: item.id, adjustmentType: 'add', quantity: 1 });
+    expect(res.status).toBe(409);
+    expect((await pool.query('SELECT quantity FROM inventory WHERE id = $1', [item.id])).rows[0].quantity).toBe(2147483647);
+    expect((await pool.query('SELECT COUNT(*)::int AS count FROM inventory_history')).rows[0].count).toBe(0);
+  });
+
+  it('rolls back the stock update if inserting its history fails, then accepts the next adjustment', async () => {
+    const item = await addItem(sampleItems[1]);
+    // A validly signed token for a missing author forces the history foreign-key insert to fail.
+    await pool.query('DELETE FROM users WHERE id = 42');
+    const failed = await adjust({ productId: item.id, adjustmentType: 'add', quantity: 5 });
+    expect(failed.status).toBe(500);
+    expect((await pool.query('SELECT quantity FROM inventory WHERE id = $1', [item.id])).rows[0].quantity).toBe(20);
+    expect((await pool.query('SELECT COUNT(*)::int AS count FROM inventory_history')).rows[0].count).toBe(0);
+    await pool.query(
+      "INSERT INTO users (id, email, password_hash, name) VALUES (42, 'ada.tester@example.com', 'unused', 'Ada Tester')"
+    );
+    const success = await adjust({ productId: item.id, adjustmentType: 'add', quantity: 5 });
+    expect(success.status).toBe(200);
+    expect(success.body).toMatchObject({ previousQuantity: 20, newQuantity: 25 });
+  });
+
+  it('serializes concurrent additions without losing updates and records each author', async () => {
+    const item = await addItem(sampleItems[0]);
+    const responses = await Promise.all(Array.from({ length: 12 }, () =>
+      adjust({ productId: item.id, adjustmentType: 'add', quantity: 7 })
+    ));
+    expect(responses.map((res) => res.status)).toEqual(Array(12).fill(200));
+    expect((await pool.query('SELECT quantity FROM inventory WHERE id = $1', [item.id])).rows[0].quantity).toBe(584);
+    const history = await pool.query(
+      'SELECT previous_quantity, quantity, user_id FROM inventory_history WHERE product_id = $1 ORDER BY id', [item.id]
+    );
+    expect(history.rows).toEqual(Array.from({ length: 12 }, (_, index) => ({
+      previous_quantity: 500 + index * 7, quantity: 7, user_id: 42,
+    })));
+  });
+
+  it('allows only one concurrent removal when both would overdraw stock', async () => {
+    const item = await addItem(sampleItems[1]);
+    const responses = await Promise.all([1, 2].map(() =>
+      adjust({ productId: item.id, adjustmentType: 'remove', quantity: 15 })
+    ));
+    expect(responses.map((res) => res.status).sort()).toEqual([200, 409]);
+    expect((await pool.query('SELECT quantity FROM inventory WHERE id = $1', [item.id])).rows[0].quantity).toBe(5);
+    const history = await pool.query('SELECT previous_quantity, quantity FROM inventory_history');
+    expect(history.rows).toEqual([{ previous_quantity: 20, quantity: 15 }]);
+  });
+
+  it('uses the token author rather than a submitted user_id and displays the correct user name', async () => {
+    const item = await addItem(sampleItems[1]);
+    const res = await adjust({ productId: item.id, adjustmentType: 'set', quantity: 10, user_id: 999 });
+    expect(res.status).toBe(200);
+    const history = await request(app).get('/api/inventory/history/' + item.id)
+      .set('Authorization', inventoryAuthorization());
+    expect(history.body).toEqual([expect.objectContaining({ user_id: 42, user_name: 'Ada Tester', previous_quantity: 20 })]);
+  });
 });
 
 describe('GET /api/inventory/history/:productId', () => {
@@ -360,5 +431,23 @@ describe('legacy SMALLINT migration', () => {
     `)).rejects.toMatchObject({ code: '23503' });
     await pool.query('DELETE FROM inventory WHERE id = 40000');
     expect((await pool.query('SELECT COUNT(*)::int AS count FROM inventory_history WHERE product_id = 40000')).rows[0].count).toBe(0);
+  });
+});
+
+describe('history author migration', () => {
+  it('adds a nullable author to legacy history and preserves it through repeated initialization', async () => {
+    await pool.query('ALTER TABLE inventory_history DROP COLUMN user_id');
+    const item = await addItem(sampleItems[1]);
+    await pool.query(
+      "INSERT INTO inventory_history (product_id, adjustment_type, quantity, previous_quantity) VALUES ($1, 'add', 1, 19)",
+      [item.id]
+    );
+    await initDatabase();
+    await initDatabase();
+    const legacy = await pool.query('SELECT user_id, previous_quantity FROM inventory_history');
+    expect(legacy.rows).toEqual([{ user_id: null, previous_quantity: 19 }]);
+    await pool.query('UPDATE inventory_history SET user_id = 42');
+    await pool.query('DELETE FROM users WHERE id = 42');
+    expect((await pool.query('SELECT user_id FROM inventory_history')).rows).toEqual([{ user_id: null }]);
   });
 });
