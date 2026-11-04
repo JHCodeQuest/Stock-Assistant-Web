@@ -340,3 +340,54 @@ describe('inventory image URLs', () => {
     expect(screen.getByRole('img', { name: 'Selected' })).toHaveAttribute('src', apiOrigin + '/uploads/images/bolt.png');
   });
 });
+
+describe('inventory outages', () => {
+  test.each([
+    ['/', 'Failed to load metrics.'],
+    ['/inventory', 'Error loading inventory'],
+    ['/find-items', 'Unable to load inventory. Please try again.'],
+    ['/warehouse', 'Unable to load inventory. Please try again.'],
+    ['/image-search', 'Unable to load inventory. Please try again.'],
+  ])('%s displays a failed request instead of an empty warehouse', async (route, message) => {
+    signIn();
+    mockGetInventory.mockRejectedValue({ response: { status: 500, data: { error: 'Failed to fetch inventory' } } });
+    renderApp(route);
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(screen.queryByText('No inventory data to display.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No inventory items yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Upload an image to find matching items')).not.toBeInTheDocument();
+    expect(screen.queryByText('Total Products')).not.toBeInTheDocument();
+  });
+
+  test('find-items retries a failed inventory request', async () => {
+    signIn();
+    mockGetInventory.mockRejectedValue(new Error('unavailable'));
+    const { user } = renderApp('/find-items');
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    mockGetInventory.mockResolvedValue({ data: [] });
+    await user.click(screen.getByRole('button', { name: 'Retry inventory' }));
+    expect(await screen.findByRole('heading', { name: 'Find Items' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  test('dashboard retries an outage and shows real empty metrics only after success', async () => {
+    signIn();
+    mockGetInventory.mockRejectedValue(new Error('unavailable'));
+    const { user } = renderApp('/');
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    mockGetInventory.mockResolvedValue({ data: [] });
+    await user.click(screen.getByRole('button', { name: 'Retry metrics' }));
+    expect(await screen.findByText('No inventory data to display.')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  test('a failed background refresh hides cached metrics and reports the outage', async () => {
+    signIn();
+    const { queryClient } = renderApp('/');
+    expect(await screen.findByText('Total Products')).toBeInTheDocument();
+    mockGetInventory.mockRejectedValue(new Error('outage after successful load'));
+    await act(async () => { await queryClient.refetchQueries(['inventory']); });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to load metrics.');
+    expect(screen.queryByText('Total Products')).not.toBeInTheDocument();
+  });
+});
