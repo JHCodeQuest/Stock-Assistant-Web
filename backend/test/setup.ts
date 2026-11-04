@@ -1,4 +1,11 @@
-import { vi } from 'vitest';
+import { beforeEach, vi } from 'vitest';
+
+import { loginStore, registrationStore } from '../src/middleware/auth-rate-limit';
+
+beforeEach(async () => {
+  await loginStore.resetAll();
+  await registrationStore.resetAll();
+});
 
 // Runs before every test file, before the app is imported. dotenv never overrides variables
 // that are already set, so a local backend/.env can't point the tests at a real database,
@@ -18,6 +25,7 @@ process.env.DATABASE_URL = testDatabaseUrl;
 process.env.DATABASE_SSL = 'false';
 process.env.JWT_SECRET = 'test-only-jwt-secret';
 process.env.RESEND_API_KEY = '';
+process.env.REGISTRATION_INVITE_CODE = 'test-only-invite';
 
 // Never send real email.
 vi.mock('../src/services/email', () => ({

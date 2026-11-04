@@ -1,10 +1,19 @@
 import { Request, Response } from 'express';
+import { timingSafeEqual } from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/database';
 import { sendWelcomeEmail } from '../services/email';
 
 export const register = async (req: Request, res: Response) => {
+  const invite = process.env.REGISTRATION_INVITE_CODE;
+  const supplied = req.body?.inviteCode;
+  if (!invite || typeof supplied !== 'string' ||
+      Buffer.byteLength(invite) !== Buffer.byteLength(supplied) ||
+      !timingSafeEqual(Buffer.from(invite), Buffer.from(supplied))) {
+    return res.status(403).json({ error: 'Registration requires a valid invitation.' });
+  }
+
   try {
     const { email, password, name } = req.body;
     
@@ -18,7 +27,7 @@ export const register = async (req: Request, res: Response) => {
     
     const result = await pool.query(
       'INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role',
-      [email, hashedPassword, name || email.split('@')[0], 'admin']
+      [email, hashedPassword, name || email.split('@')[0], 'staff']
     );
     
     const newUser = result.rows[0];

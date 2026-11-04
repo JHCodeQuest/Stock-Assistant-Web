@@ -127,6 +127,7 @@ describe('register', () => {
     renderApp('/register');
 
     expect(screen.getByRole('heading', { name: 'Register' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Invite code')).toBeRequired();
     expect(screen.getByPlaceholderText('Enter your name')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Enter your email')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Enter your password')).toBeInTheDocument();
@@ -137,6 +138,7 @@ describe('register', () => {
     mockRegister.mockResolvedValue({ data: { token: TEST_TOKEN, user: TEST_USER } });
     const { user } = renderApp('/register');
 
+    await user.type(screen.getByLabelText('Invite code'), 'test-invitation');
     await user.type(screen.getByPlaceholderText('Enter your name'), TEST_USER.name);
     await user.type(screen.getByPlaceholderText('Enter your email'), TEST_USER.email);
     await user.type(screen.getByPlaceholderText('Enter your password'), TEST_PASSWORD);
@@ -148,6 +150,7 @@ describe('register', () => {
       name: TEST_USER.name,
       email: TEST_USER.email,
       password: TEST_PASSWORD,
+      inviteCode: 'test-invitation',
     });
     expect(sessionStorage.getItem('token')).toBe(TEST_TOKEN);
   });
@@ -156,6 +159,7 @@ describe('register', () => {
     mockRegister.mockRejectedValue({ response: { data: { error: 'Email already registered' } } });
     const { user } = renderApp('/register');
 
+    await user.type(screen.getByLabelText('Invite code'), 'test-invitation');
     await user.type(screen.getByPlaceholderText('Enter your name'), TEST_USER.name);
     await user.type(screen.getByPlaceholderText('Enter your email'), TEST_USER.email);
     await user.type(screen.getByPlaceholderText('Enter your password'), TEST_PASSWORD);

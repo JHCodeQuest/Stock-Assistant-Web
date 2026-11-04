@@ -61,10 +61,13 @@ export const initDatabase = async () => {
         email VARCHAR(120) UNIQUE NOT NULL,
         password_hash VARCHAR(60) NOT NULL,
         name VARCHAR(100) NOT NULL,
-        role VARCHAR(20) DEFAULT 'admin',
+        role VARCHAR(20) DEFAULT 'staff',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // CREATE TABLE IF NOT EXISTS does not update defaults on existing installations.
+    await client.query("ALTER TABLE users ALTER COLUMN role SET DEFAULT 'staff'");
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS inventory (

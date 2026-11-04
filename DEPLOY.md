@@ -104,3 +104,24 @@ The API now stays up without a database, retries in the background, and reports 
 - 512 MB RAM
 
 For selling this project, consider upgrading to paid tier ($7/month) for always-on performance.
+
+## Registration and authentication limits
+
+Registration is closed unless the backend has a non-empty `REGISTRATION_INVITE_CODE`.
+Set a long random value in Render's Environment settings and give it only to intended demo
+users. Users enter it in the registration form; never put it in frontend environment variables,
+the repository, or logs. Remove the variable to close registration again; rotate it to revoke
+the previous invitation. Existing accounts can still log in.
+
+Newly registered and seeded accounts have role `staff`. Database initialization updates the
+default for existing databases too. Existing account roles are preserved; review previously
+created admin accounts separately and explicitly promote only accounts you trust.
+
+Login permits 10 requests per client IP per 15 minutes. Registration permits 5, including
+invalid invitation attempts. Both return 429 with JSON error and Retry-After when blocked.
+Counters are in memory for this single-instance demo: restarts reset them; multiple instances
+need a shared store.
+
+On Render (`RENDER=true`), Express trusts the nearest reverse proxy hop to identify each
+client. Direct local deployments do not trust forwarded headers. If hosting changes, confirm
+the proxy topology before changing this setting.
