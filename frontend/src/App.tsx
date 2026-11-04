@@ -1,3 +1,4 @@
+import { resolveImageUrl } from './services/urls';
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -177,7 +178,7 @@ const FindItems: React.FC = () => {
               <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-gray-50">
                 {item.image_url && (
                   <img
-                    src={item.image_url}
+                    src={resolveImageUrl(item.image_url)}
                     alt={item.name}
                     className="w-16 h-16 object-cover rounded"
                     onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
