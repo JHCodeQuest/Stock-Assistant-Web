@@ -4,12 +4,15 @@ An intelligent inventory management system with AI-powered image recognition for
 
 ## Features
 
-- **Dashboard** - Real-time inventory metrics and visualizations
+- **Dashboard** - Inventory metrics and visualizations, refreshed every 30 seconds
 - **Inventory Management** - Track stock levels, locations, and items
 - **AI Image Search** - Upload photos to find matching items using TensorFlow.js
 - **Warehouse Query** - Search items by location, SKU, or name
 - **Smart Suggestions** - Auto-detect category and SKU prefix from images
 - **User Authentication** - Login/register system with JWT tokens
+
+The dashboard polls inventory every 30 seconds while open. Use **Refresh** in the inventory
+table to load changes made elsewhere. Stock changes are not broadcast between clients.
 
 ## Tech Stack
 
@@ -26,7 +29,6 @@ An intelligent inventory management system with AI-powered image recognition for
 - **TypeScript**
 - **JWT** - Authentication
 - **bcryptjs** - Password hashing
-- **Socket.io** - Real-time updates
 - **Multer** - File uploads
 
 ### Data
