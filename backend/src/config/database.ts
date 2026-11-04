@@ -109,7 +109,7 @@ export const initDatabase = async () => {
 
     // The DO block is atomic and skips ALTER TABLE once existing columns are widened.
     await client.query(`
-      DO $
+      DO $$
       BEGIN
         IF EXISTS (
           SELECT 1 FROM information_schema.columns
@@ -128,7 +128,7 @@ export const initDatabase = async () => {
             ALTER COLUMN quantity TYPE INTEGER,
             ALTER COLUMN previous_quantity TYPE INTEGER;
         END IF;
-      END $;
+      END $$;
     `);
 
     await client.query(`CREATE INDEX IF NOT EXISTS idx_inventory_category ON inventory(category)`);
