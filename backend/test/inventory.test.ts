@@ -451,3 +451,37 @@ describe('history author migration', () => {
     expect((await pool.query('SELECT user_id FROM inventory_history')).rows).toEqual([{ user_id: null }]);
   });
 });
+
+describe('history author join regression', () => {
+  it('does not confuse the previous stock count with a user ID', async () => {
+    await pool.query(
+      "INSERT INTO users (id, email, password_hash, name) VALUES (20, 'unrelated@example.com', 'unused', 'Unrelated Person')"
+    );
+    const item = await addItem(sampleItems[1]);
+    const changed = await request(app).post('/api/inventory/adjust')
+      .set('Authorization', inventoryAuthorization())
+      .send({ productId: item.id, adjustmentType: 'add', quantity: 1 });
+    expect(changed.status).toBe(200);
+    const history = await request(app).get('/api/inventory/history/' + item.id)
+      .set('Authorization', inventoryAuthorization());
+    expect(history.status).toBe(200);
+    expect(history.body).toEqual([expect.objectContaining({
+      previous_quantity: 20, user_id: 42, user_name: 'Ada Tester',
+    })]);
+  });
+
+  it('returns no inferred author for legacy rows even when stock matches another user ID', async () => {
+    await pool.query(
+      "INSERT INTO users (id, email, password_hash, name) VALUES (20, 'unrelated@example.com', 'unused', 'Unrelated Person')"
+    );
+    const item = await addItem(sampleItems[1]);
+    await pool.query(
+      "INSERT INTO inventory_history (product_id, adjustment_type, quantity, previous_quantity) VALUES ($1, 'add', 1, 20)",
+      [item.id]
+    );
+    const history = await request(app).get('/api/inventory/history/' + item.id)
+      .set('Authorization', inventoryAuthorization());
+    expect(history.status).toBe(200);
+    expect(history.body).toEqual([expect.objectContaining({ user_id: null, user_name: null })]);
+  });
+});

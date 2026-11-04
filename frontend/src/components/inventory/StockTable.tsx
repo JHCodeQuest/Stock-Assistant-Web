@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getInventory } from '../../services/api';
 import { Link } from 'react-router-dom';
+import StockHistory from './StockHistory';
 import { TableSkeleton } from '../common/Loading';
 
 type SortField = 'name' | 'sku' | 'category' | 'quantity' | 'location' | 'unit_price';
@@ -24,6 +25,7 @@ const StockTable: React.FC = () => {
   const [stockFilter, setStockFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const [historyItem, setHistoryItem] = useState<{ id: string; name: string } | null>(null);
 
   const inventory = data || [];
 
@@ -202,6 +204,13 @@ const StockTable: React.FC = () => {
         </div>
       </div>
       
+      {historyItem && <StockHistory
+        key={historyItem.id}
+        productId={historyItem.id}
+        productName={historyItem.name}
+        onClose={() => setHistoryItem(null)}
+      />}
+
       {filteredAndSortedInventory.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center">
           <div className="mb-4">
@@ -285,6 +294,7 @@ const StockTable: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">History</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -329,6 +339,11 @@ const StockTable: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {getStatusBadge(item)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <button type="button" aria-label={'View history for ' + item.name}
+                          onClick={() => setHistoryItem({ id: String(item.id), name: item.name })}
+                          className="text-blue-600 hover:underline">View history</button>
                       </td>
                     </tr>
                   ))}
