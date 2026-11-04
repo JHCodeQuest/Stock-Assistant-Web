@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -292,4 +292,45 @@ describe('protected routes', () => {
   });
 
   test.todo('#1 serves routes under the GitHub Pages basename');
+});
+
+describe('inventory image URLs', () => {
+  const apiOrigin = new URL(process.env.REACT_APP_API_URL ||
+    'https://stock-assistant-api-3x6i.onrender.com/api', window.location.origin).origin;
+  const item = { id: 1, name: 'Hex Bolt M8', sku: 'BLT-001', quantity: 5,
+    min_stock_level: 1, category: 'Fasteners', image_url: '/uploads/images/bolt.png' };
+
+  test.each([
+    ['/inventory', '/uploads/images/bolt.png', apiOrigin + '/uploads/images/bolt.png'],
+    ['/inventory', 'https://res.cloudinary.com/demo/image/upload/bolt.png', 'https://res.cloudinary.com/demo/image/upload/bolt.png'],
+    ['/find-items', '/uploads/images/bolt.png', apiOrigin + '/uploads/images/bolt.png'],
+    ['/find-items', 'https://res.cloudinary.com/demo/image/upload/bolt.png', 'https://res.cloudinary.com/demo/image/upload/bolt.png'],
+  ])('%s renders stored image %s from the correct origin', async (route, imageUrl, expected) => {
+    signIn();
+    mockGetInventory.mockResolvedValue({ data: [{ ...item, image_url: imageUrl }] });
+    const { user } = renderApp(route);
+    if (route === '/find-items') {
+      await waitFor(() => expect(mockGetInventory).toHaveBeenCalled());
+      await user.type(screen.getByPlaceholderText(/laptop charger/), 'bolt');
+      await user.click(screen.getByRole('button', { name: 'Search' }));
+    }
+    expect(await screen.findByRole('img', { name: item.name })).toHaveAttribute('src', expected);
+  });
+
+  test('image-search thumbnails and selected previews use the API origin', async () => {
+    signIn();
+    mockGetInventory.mockResolvedValue({ data: [item] });
+    // Filename matching still works when the model is unavailable.
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.spyOn(require('@tensorflow-models/mobilenet'), 'load').mockRejectedValue(new Error('offline'));
+    const { user } = renderApp('/image-search');
+    await waitFor(() => expect(screen.queryByText(/Loading AI model/)).not.toBeInTheDocument());
+    await waitFor(() => expect(mockGetInventory).toHaveBeenCalled());
+    await user.upload(screen.getByLabelText(/Click or drag to upload/),
+      new File(['photo'], 'bolt.png', { type: 'image/png' }));
+    const thumbnail = await screen.findByRole('img', { name: item.name });
+    expect(thumbnail).toHaveAttribute('src', apiOrigin + '/uploads/images/bolt.png');
+    await user.click(thumbnail);
+    expect(screen.getByRole('img', { name: 'Selected' })).toHaveAttribute('src', apiOrigin + '/uploads/images/bolt.png');
+  });
 });
