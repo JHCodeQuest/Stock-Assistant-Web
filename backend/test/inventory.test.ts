@@ -327,7 +327,31 @@ describe('GET /api/inventory/search', () => {
     expect(res.body).toEqual({ results: [], suggestion: 'No items found matching "trampoline". Try different keywords.' });
   });
 
-  it.todo('#23 search treats % and _ in the query as literal characters');
+  it.each(
+    ['name', 'sku', 'category', 'description'].flatMap((field) =>
+      ['%', '_', '\\'].map((character) => [field, character])
+    )
+  )('searches %s for literal %s characters', async (field, character) => {
+    const literal = await addItem({
+      ...sampleItems[0], name: 'Literal Item', sku: 'LITERAL-001',
+      [field]: 'left' + character + 'right',
+    });
+    await addItem({
+      ...sampleItems[0], name: 'Control Item', sku: 'CONTROL-001',
+      [field]: 'leftXright',
+    });
+    const res = await search(character);
+    expect(res.status).toBe(200);
+    expect(res.body.results.map((item: { id: number }) => item.id)).toEqual([literal.id]);
+  });
+
+  it('matches combined literal backslashes and wildcards without expanding them', async () => {
+    const literal = await addItem({ ...sampleItems[0], name: 'Part \\%_ special' });
+    await addItem({ ...sampleItems[1], name: 'Part \\Xabc special' });
+    const res = await search('\\%_');
+    expect(res.status).toBe(200);
+    expect(res.body.results.map((item: { id: number }) => item.id)).toEqual([literal.id]);
+  });
 });
 
 describe('POST /api/inventory/match-image', () => {
@@ -483,5 +507,22 @@ describe('history author join regression', () => {
       .set('Authorization', inventoryAuthorization());
     expect(history.status).toBe(200);
     expect(history.body).toEqual([expect.objectContaining({ user_id: null, user_name: null })]);
+  });
+});
+
+
+describe('literal image filename search', () => {
+  it.each(['50%bolt', 'part\\bolt'])('escapes keyword patterns from %s', async (keyword) => {
+    const literal = await addItem({
+      ...sampleItems[0], name: keyword, image_url: '/uploads/images/literal.png',
+    });
+    await addItem({
+      ...sampleItems[1], name: keyword.replace('%', 'X').replace('\\', ''),
+      image_url: '/uploads/images/control.png',
+    });
+    const res = await request(app).post('/api/inventory/match-image')
+      .set('Authorization', inventoryAuthorization()).send({ filename: keyword + '.jpg' });
+    expect(res.status).toBe(200);
+    expect(res.body.matches.map((item: { id: number }) => item.id)).toEqual([literal.id]);
   });
 });
