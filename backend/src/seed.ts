@@ -17,7 +17,7 @@ const seed = async () => {
       
       await pool.query(
         'INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, $4)',
-        [email, hashedPassword, name, 'admin']
+        [email, hashedPassword, name, 'staff']
       );
       
       console.log(`Test user: ${email} / ${password}`);
