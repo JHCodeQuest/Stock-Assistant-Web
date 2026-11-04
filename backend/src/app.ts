@@ -2,9 +2,9 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import path from 'path';
 import dotenv from 'dotenv';
 
+import { createUploadRouter } from './middleware/upload';
 import authRoutes from './routes/auth.routes';
 import inventoryRoutes from './routes/inventory.routes';
 import pool, { checkDatabase, isDatabaseReady } from './config/database';
@@ -41,30 +41,7 @@ app.use(cors({
 // Request logs drown out test output; Vitest sets NODE_ENV=test.
 if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-
-const multer = require('multer');
-const storage = multer.diskStorage({
-  destination: (req: any, file: any, cb: any) => {
-    cb(null, path.join(__dirname, '../uploads/images'));
-  },
-  filename: (req: any, file: any, cb: any) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
-const upload = multer({ storage });
-
-app.post('/api/upload', (req: Request, res: Response) => {
-  upload.single('image')(req as any, res as any, (err: any) => {
-    if (err) {
-      return res.status(500).json({ error: 'Upload failed' });
-    }
-    res.json({
-      url: `/uploads/images/${(req as any).file?.filename}`,
-    });
-  });
-});
+app.use(createUploadRouter());
 
 app.get('/', (req: Request, res: Response) => {
   res.json({ message: 'Stock Inventory API is running' });
