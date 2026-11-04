@@ -1,4 +1,4 @@
-import api from './api';
+import api, { uploadImage } from './api';
 
 // CRA's Jest runtime needs Axios's CommonJS build.
 jest.mock('axios', () => jest.requireActual('axios/dist/node/axios.cjs'));
@@ -61,5 +61,30 @@ test.each([401, 403, 500])('HTTP %s clears the session only for 401 and preserve
   } else {
     expect(sessionStorage.getItem('token')).toBe('session-token');
     expect(sessionStorage.getItem('user')).not.toBeNull();
+  }
+});
+
+test('uploads use the configured API, session token and multipart data', async () => {
+  sessionStorage.setItem('token', 'session-token');
+  const file = new File(['image'], 'test.png', { type: 'image/png' });
+  const previousAdapter = api.defaults.adapter;
+  let observed: any;
+  api.defaults.adapter = async (config) => {
+    observed = config;
+    return { data: { url: '/uploads/images/server-name.png' }, status: 200,
+      statusText: 'OK', headers: {}, config };
+  };
+  try {
+    const url = await uploadImage(file);
+    expect(observed.url).toBe('/upload');
+    expect(observed.baseURL).toBe(api.defaults.baseURL);
+    expect(observed.headers.Authorization).toBe('Bearer session-token');
+    expect(observed.headers['Content-Type']).not.toBe('application/json');
+    expect(observed.data).toBeInstanceOf(FormData);
+    expect(observed.data.get('image')).toBe(file);
+    expect(url).toBe(new URL('/uploads/images/server-name.png',
+      new URL(api.defaults.baseURL!, window.location.origin)).href);
+  } finally {
+    api.defaults.adapter = previousAdapter;
   }
 });
