@@ -18,7 +18,7 @@ export const allowedOrigins = [
   process.env.FRONTEND_URL
 ].filter(Boolean) as string[];
 
-// Shared by Express and socket.io so both accept the same origins.
+// Restrict API requests to the configured frontend origins.
 export const checkOrigin = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
   if (!origin || allowedOrigins.includes(origin)) {
     callback(null, true);
