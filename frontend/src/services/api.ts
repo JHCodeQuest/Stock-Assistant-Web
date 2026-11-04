@@ -34,14 +34,6 @@ export const login = (credentials: { email: string; password: string }) =>
 export const register = (userData: any) => 
   api.post('/auth/register', userData);
 
-// Product endpoints
-export const getProducts = () => api.get('/products');
-export const createProduct = (productData: any) => 
-  api.post('/products', productData);
-export const updateProduct = (id: string, productData: any) => 
-  api.put(`/products/${id}`, productData);
-export const deleteProduct = (id: string) => api.delete(`/products/${id}`);
-
 export const uploadImage = async (file: File) => {
   const formData = new FormData();
   formData.append('image', file);
