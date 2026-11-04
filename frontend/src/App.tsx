@@ -4,6 +4,7 @@ import { Routes, Route, Link, Navigate, Outlet, useNavigate } from 'react-router
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { login as loginApi, register as registerApi, getInventory } from './services/api';
 import { clearSession, saveSession, SESSION_CHANGED } from './services/session';
+import InventoryError from './components/common/InventoryError';
 import InventoryMetrics from './components/dashboard/InventoryMetrics';
 import StockTable from './components/inventory/StockTable';
 import ImageSearch from './components/inventory/ImageSearch';
@@ -108,13 +109,15 @@ const FindItems: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const { data: inventory } = useQuery({
+  const { data: inventory, error: inventoryError, refetch: retryInventory } = useQuery({
     queryKey: ['inventory'],
     queryFn: async () => {
       const response = await getInventory();
       return response.data;
     },
   });
+
+  if (inventoryError) return <InventoryError onRetry={() => { retryInventory(); }} />;
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -218,13 +221,15 @@ const FindItems: React.FC = () => {
 const WarehouseQuery: React.FC = () => {
   const [locationQuery, setLocationQuery] = useState('');
   const [queryResults, setQueryResults] = useState<any[]>([]);
-  const { data: inventory } = useQuery({
+  const { data: inventory, error: inventoryError, refetch: retryInventory } = useQuery({
     queryKey: ['inventory'],
     queryFn: async () => {
       const response = await getInventory();
       return response.data;
     },
   });
+
+  if (inventoryError) return <InventoryError onRetry={() => { retryInventory(); }} />;
 
   const handleLocationSearch = () => {
     if (!locationQuery.trim()) {
