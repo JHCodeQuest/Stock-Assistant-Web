@@ -1,10 +1,12 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { login, register, getInventory } from './services/api';
+
+jest.mock('axios', () => jest.requireActual('axios/dist/node/axios.cjs'));
 
 // The HTTP layer is mocked, so no test reaches the network.
 jest.mock('./services/api', () => ({
@@ -42,7 +44,7 @@ function renderApp(route = '/') {
       </MemoryRouter>
     </QueryClientProvider>
   );
-  return { user };
+  return { user, queryClient };
 }
 
 function signIn() {
@@ -83,6 +85,7 @@ describe('login', () => {
     await user.click(screen.getByRole('button', { name: 'Login' }));
 
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(within(nav()).getByRole('link', { name: TEST_USER.name })).toBeInTheDocument();
     expect(currentPath()).toBe('/');
     expect(mockLogin).toHaveBeenCalledWith({ email: TEST_USER.email, password: TEST_PASSWORD });
     expect(sessionStorage.getItem('token')).toBe(TEST_TOKEN);
@@ -117,7 +120,6 @@ describe('login', () => {
     expect(currentPath()).toBe('/login');
   });
 
-  test.todo('nav shows the signed-in user straight after login, without a reload');
 });
 
 describe('register', () => {
@@ -141,6 +143,7 @@ describe('register', () => {
     await user.click(screen.getByRole('button', { name: 'Register' }));
 
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(within(nav()).getByRole('link', { name: TEST_USER.name })).toBeInTheDocument();
     expect(mockRegister).toHaveBeenCalledWith({
       name: TEST_USER.name,
       email: TEST_USER.email,
@@ -192,47 +195,80 @@ describe('logout', () => {
     expect(sessionStorage.getItem('user')).toBeNull();
     expect(currentPath()).toBe('/login');
     expect(screen.getByRole('heading', { name: 'Login' })).toBeInTheDocument();
+    expect(within(nav()).queryByText(TEST_USER.name)).not.toBeInTheDocument();
   });
 
-  test.todo('the nav forgets the user after logging out from the profile page');
 });
 
-describe('routes as they render today', () => {
-  test.each([
-    ['/', 'Dashboard'],
-    ['/inventory', 'Inventory'],
-    ['/find-items', 'Find Items'],
-    ['/warehouse', 'Warehouse Query'],
-    ['/add-inventory', 'Add Inventory Item'],
-    ['/login', 'Login'],
-    ['/register', 'Register'],
-  ])('%s renders the %s page when signed out', async (route, heading) => {
+const protectedRoutes = [
+  ['/', 'Dashboard'],
+  ['/inventory', 'Inventory'],
+  ['/find-items', 'Find Items'],
+  ['/warehouse', 'Warehouse Query'],
+  ['/add-inventory', 'Add Inventory Item'],
+  ['/image-search', 'AI Image Search'],
+  ['/profile', 'Profile'],
+];
+
+describe('protected routes', () => {
+  test.each(protectedRoutes)('%s redirects to login when signed out', async (route) => {
     renderApp(route);
-    const main = screen.getByRole('main');
-    expect(await within(main).findByRole('heading', { name: heading })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument();
+    expect(currentPath()).toBe('/login');
+    expect(mockGetInventory).not.toHaveBeenCalled();
+  });
+
+  test.each(protectedRoutes)('%s renders %s with a session token', async (route, heading) => {
+    signIn();
+    renderApp(route);
+    expect(await within(screen.getByRole('main')).findByRole('heading', { name: heading })).toBeInTheDocument();
     expect(currentPath()).toBe(route);
+    if (route === '/image-search') {
+      expect(await screen.findByText(/AI model ready/)).toBeInTheDocument();
+    }
   });
 
-  test('/image-search renders the image search page when signed out', async () => {
-    renderApp('/image-search');
-    const main = screen.getByRole('main');
-    expect(within(main).getByRole('heading', { name: 'AI Image Search' })).toBeInTheDocument();
-    // The mocked mobilenet model loads, so the page reports it as ready.
-    expect(await within(main).findByText(/AI model ready/)).toBeInTheDocument();
-    expect(currentPath()).toBe('/image-search');
-  });
+  test.each([['/login', 'Login'], ['/register', 'Register']])(
+    '%s remains public', async (route, heading) => {
+      renderApp(route);
+      expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+      expect(currentPath()).toBe(route);
+    }
+  );
 
-  test('/profile renders nothing when signed out and does not redirect', () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  test('a stored user without a token cannot open protected pages', async () => {
+    sessionStorage.setItem('user', JSON.stringify(TEST_USER));
     renderApp('/profile');
-    expect(screen.getByRole('main')).toBeEmptyDOMElement();
-    expect(currentPath()).toBe('/profile');
-    // Profile calls navigate() during render, which React Router ignores.
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('You should call navigate() in a React.useEffect()'));
+    expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument();
+    expect(currentPath()).toBe('/login');
+    expect(within(nav()).queryByText(TEST_USER.name)).not.toBeInTheDocument();
+  });
+
+  test('a 401 clears the session, cached data and member navigation, then redirects', async () => {
+    signIn();
+    const { queryClient } = renderApp('/inventory');
+    expect(await screen.findByRole('heading', { name: 'Inventory' })).toBeInTheDocument();
+    queryClient.setQueryData(['private-example'], { confidential: true });
+    const api = jest.requireActual('./services/api').default;
+    const error = { response: { status: 401 } };
+
+    await act(async () => {
+      await expect(api.get('/inventory', {
+        adapter: async () => { throw error; },
+      })).rejects.toBe(error);
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument();
+    expect(currentPath()).toBe('/login');
+    expect(sessionStorage.getItem('token')).toBeNull();
+    expect(sessionStorage.getItem('user')).toBeNull();
+    expect(queryClient.getQueryData(['private-example'])).toBeUndefined();
+    expect(within(nav()).queryByText(TEST_USER.name)).not.toBeInTheDocument();
+    expect(within(nav()).queryByRole('button', { name: 'Logout' })).not.toBeInTheDocument();
   });
 
   test('signed-out nav shows only public links', () => {
-    renderApp('/');
+    renderApp('/login');
     const links = within(nav()).getAllByRole('link').map((a) => a.textContent);
     expect(links).toEqual(['Dashboard', 'Inventory', 'Login']);
   });
@@ -251,6 +287,5 @@ describe('routes as they render today', () => {
     expect(screen.getByRole('main')).toBeEmptyDOMElement();
   });
 
-  test.todo('#12 (details in the private task)');
   test.todo('#1 serves routes under the GitHub Pages basename');
 });
