@@ -253,13 +253,13 @@ See [DEPLOY.md](./DEPLOY.md) for step-by-step instructions.
 
 ### Quick Deploy Summary
 
-1. **Frontend**: Settings → Pages → Source: main branch
+1. **Frontend**: Settings → Pages → Source: GitHub Actions (the Frontend Pages workflow builds and deploys)
 2. **Backend**: Create Web Service on Render, connect GitHub repo
 3. **Database**: Create PostgreSQL on Render, copy connection string
 4. **Update**: Set `REACT_APP_API_URL` in frontend to your Render URL
 
 Your app will be available at:
-- Frontend: `https://JHCodeQuest.github.io/Stock-Assistant-Web`
+- Frontend: `https://JHCodeQuest.github.io/Stock-Assistant-Web/#/login`
 - Backend: `https://stock-assistant-api.onrender.com`
 
 ## License
