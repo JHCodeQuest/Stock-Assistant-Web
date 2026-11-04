@@ -99,12 +99,19 @@ export const initDatabase = async () => {
       CREATE TABLE IF NOT EXISTS inventory_history (
         id SERIAL PRIMARY KEY,
         product_id INTEGER REFERENCES inventory(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         adjustment_type VARCHAR(10) NOT NULL,
         quantity INTEGER NOT NULL,
         previous_quantity INTEGER,
         reason VARCHAR(200),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    // Old history has no reliable author to backfill; preserve it with a NULL user_id.
+    await client.query(`
+      ALTER TABLE inventory_history
+      ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
     `);
 
     // The DO block is atomic and skips ALTER TABLE once existing columns are widened.
